@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -62,10 +63,9 @@ class LibraryViewModel(
         val source: Flow<List<Game>> = when {
             query.isNotBlank() -> repository.searchGames(query)
             status == GameStatusFilter.ALL -> repository.observeAllGames()
-            else -> {
-                val gameStatus = com.gamevault.app.domain.model.GameStatus.valueOf(status.name)
-                repository.observeGamesByStatus(gameStatus)
-            }
+            else -> repository.observeGamesByStatus(
+                com.gamevault.app.domain.model.GameStatus.valueOf(status.name)
+            )
         }
         source.map { games -> sortGames(games, sort) }
     }.map { sortedGames ->
