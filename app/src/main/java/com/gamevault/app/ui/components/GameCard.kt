@@ -1,6 +1,9 @@
 package com.gamevault.app.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -71,7 +74,7 @@ fun GameCard(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Outlined.Gamepad,
+                            imageVector = Icons.Outlined.Gamepad,
                             contentDescription = null,
                             modifier = Modifier.size(40.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),

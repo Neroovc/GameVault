@@ -74,81 +74,83 @@ fun GameDetailScreen(
             )
         },
     ) { innerPadding ->
-        if (uiState.isLoading) {
+        if (uiState.isLoading || uiState.game == null) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Loading...")
+                Text(if (uiState.isLoading) "Loading..." else "Game not found")
             }
-            return@Scaffold
-        }
+        } else {
+            val game = uiState.game!!
 
-        val game = uiState.game ?: return@Scaffold
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // Cover + basic info
-            item {
-                GameHeader(
-                    game = game,
-                    onStatusChange = viewModel::updateGameStatus,
-                    onRatingChange = viewModel::updatePersonalRating,
-                )
-            }
-
-            // Status selector
-            item {
-                StatusSelector(
-                    current = game.status,
-                    onSelected = viewModel::updateGameStatus,
-                )
-            }
-
-            // Play session controls
-            item {
-                PlaySessionControls(
-                    isPlaying = uiState.sessions.any { it.endTime == null },
-                    onStart = viewModel::startPlaySession,
-                    onStop = {
-                        val activeSession = uiState.sessions.find { it.endTime == null }
-                        activeSession?.let { viewModel.endPlaySession(it.id) }
-                    },
-                    totalPlayTime = uiState.totalPlayTime,
-                )
-            }
-
-            // Routes section
-            item {
-                RoutesSectionHeader(onAddRoute = { name -> viewModel.addRoute(name) })
-            }
-
-            items(uiState.routes, key = { it.id }) { route ->
-                RouteItem(
-                    route = route,
-                    onProgressChange = { viewModel.updateRouteProgress(route.id, it) },
-                    onDelete = { viewModel.deleteRoute(route) },
-                )
-            }
-
-            // Notes
-            if (game.notes != null) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                // Cover + basic info
                 item {
-                    NotesSection(notes = game.notes)
+                    GameHeader(
+                        game = game,
+                        onStatusChange = viewModel::updateGameStatus,
+                        onRatingChange = viewModel::updatePersonalRating,
+                    )
+                }
+
+                // Status selector
+                item {
+                    StatusSelector(
+                        current = game.status,
+                        onSelected = viewModel::updateGameStatus,
+                    )
+                }
+
+                // Play session controls
+                item {
+                    PlaySessionControls(
+                        isPlaying = uiState.sessions.any { it.endTime == null },
+                        onStart = viewModel::startPlaySession,
+                        onStop = {
+                            val activeSession = uiState.sessions.find { it.endTime == null }
+                            activeSession?.let { viewModel.endPlaySession(it.id) }
+                        },
+                        totalPlayTime = uiState.totalPlayTime,
+                    )
+                }
+
+                // Routes section
+                item {
+                    RoutesSectionHeader(onAddRoute = { name -> viewModel.addRoute(name) })
+                }
+
+                items(uiState.routes, key = { it.id }) { route ->
+                    RouteItem(
+                        route = route,
+                        onProgressChange = { viewModel.updateRouteProgress(route.id, it) },
+                        onDelete = { viewModel.deleteRoute(route) },
+                    )
+                }
+
+                // Notes
+                if (game.notes != null) {
+                    item {
+                        NotesSection(notes = game.notes)
+                    }
+                }
+
+                // Source info
+                item {
+                    SourceInfo(game = game)
+                }
+
+                // Bottom spacer
+                item {
+                    Spacer(modifier = Modifier.height(32.dp))
                 }
             }
-
-            // Source info
-            item {
-                SourceInfo(game = game)
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -257,6 +259,7 @@ private fun RatingBar(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun StatusSelector(
     current: GameStatus,

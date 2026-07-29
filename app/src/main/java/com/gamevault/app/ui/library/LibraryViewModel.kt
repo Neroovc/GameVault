@@ -9,8 +9,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -57,29 +59,18 @@ class LibraryViewModel(
     ) { query, status, sort ->
         Triple(query, status, sort)
     }.flatMapLatest { (query, status, sort) ->
-        val source = when {
+        val source: Flow<List<Game>> = when {
             query.isNotBlank() -> repository.searchGames(query)
-            status != GameStatusFilter.ALL -> {
-                val gameStatus = when (status) {
-                    GameStatusFilter.NOT_STARTED -> com.gamevault.app.domain.model.GameStatus.NOT_STARTED
-                    GameStatusFilter.PLAYING -> com.gamevault.app.domain.model.GameStatus.PLAYING
-                    GameStatusFilter.COMPLETED -> com.gamevault.app.domain.model.GameStatus.COMPLETED
-                    GameStatusFilter.REPLAYING -> com.gamevault.app.domain.model.GameStatus.REPLAYING
-                    GameStatusFilter.PAUSED -> com.gamevault.app.domain.model.GameStatus.PAUSED
-                    GameStatusFilter.ABANDONED -> com.gamevault.app.domain.model.GameStatus.ABANDONED
-                    else -> repository.observeAllGames()
-                }
+            status == GameStatusFilter.ALL -> repository.observeAllGames()
+            else -> {
+                val gameStatus = com.gamevault.app.domain.model.GameStatus.valueOf(status.name)
                 repository.observeGamesByStatus(gameStatus)
             }
-            else -> repository.observeAllGames()
         }
-        source
-    }.combine(
-        combine(_searchQuery, _selectedStatus, _sortOrder) { q, s, o -> Triple(q, s, o) }
-    ) { games, _ ->
-        val sorted = sortGames(games, _sortOrder.value)
+        source.map { games -> sortGames(games, sort) }
+    }.map { sortedGames ->
         LibraryUiState(
-            games = sorted,
+            games = sortedGames,
             searchQuery = _searchQuery.value,
             isLoading = false,
             selectedStatus = _selectedStatus.value,
