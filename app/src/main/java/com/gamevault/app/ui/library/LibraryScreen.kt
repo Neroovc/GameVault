@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +20,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -37,14 +39,16 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
@@ -53,6 +57,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,7 +66,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -84,12 +91,19 @@ fun LibraryScreen(
     val isSelectionMode by selectionViewModel.isSelectionMode.collectAsState()
     val selectedCount by selectionViewModel.selectedCount.collectAsState()
     var searchExpanded by remember { mutableStateOf(false) }
-    var showFilters by remember { mutableStateOf(false) }
-    var showSortMenu by remember { mutableStateOf(false) }
+    var showSheet by remember { mutableStateOf(false) }
     var showBulkStatusDialog by remember { mutableStateOf(false) }
     var showBulkCollectionDialog by remember { mutableStateOf(false) }
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+
+    val displayItems = remember(uiState.games, uiState.groupBy) {
+        viewModel.computeDisplayItems(uiState.games, uiState.groupBy)
+    }
+
+    val hasActiveFilters = uiState.selectedStatus != GameStatusFilter.ALL ||
+        uiState.selectedCollectionId != null ||
+        uiState.groupBy != GroupBy.NONE
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -107,29 +121,12 @@ fun LibraryScreen(
                         IconButton(onClick = { searchExpanded = !searchExpanded }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
                         }
-                        IconButton(onClick = { showFilters = !showFilters }) {
+                        IconButton(onClick = { showSheet = true }) {
                             Icon(
                                 Icons.Default.FilterList,
-                                contentDescription = "Filter",
-                                tint = if (showFilters ||
-                                    uiState.selectedStatus != GameStatusFilter.ALL ||
-                                    uiState.selectedCollectionId != null
-                                ) MaterialTheme.colorScheme.primary
+                                contentDescription = "Filter & Sort",
+                                tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary
                                 else MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { showSortMenu = true }) {
-                                Icon(Icons.Default.SwapVert, contentDescription = "Sort")
-                            }
-                            SortDropdownMenu(
-                                expanded = showSortMenu,
-                                onDismiss = { showSortMenu = false },
-                                currentSort = uiState.sortOrder,
-                                onSortSelected = { order ->
-                                    viewModel.onSortOrderChanged(order)
-                                    showSortMenu = false
-                                },
                             )
                         }
                     },
@@ -182,28 +179,6 @@ fun LibraryScreen(
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                     ) { }
                 }
-
-                // Filter chips (collapsible)
-                AnimatedVisibility(
-                    visible = showFilters,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut(),
-                ) {
-                    Column {
-                        CollectionFilterRow(
-                            collections = collections,
-                            selectedCollectionId = uiState.selectedCollectionId,
-                            onSelected = viewModel::onCollectionFilterChanged,
-                        )
-                        StatusFilterRow(
-                            selected = uiState.selectedStatus,
-                            onSelected = {
-                                viewModel.onStatusFilterChanged(it)
-                                // Keep filters open so user can chain selections
-                            },
-                        )
-                    }
-                }
             }
 
             // Content
@@ -211,18 +186,9 @@ fun LibraryScreen(
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        "Loading...",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            } else if (uiState.games.isEmpty()) {
-                EmptyLibrary(
-                    onAddGame = onAddGame,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                ) { Text("Loading...") }
+            } else if (displayItems.isEmpty()) {
+                EmptyLibrary(onAddGame = onAddGame, modifier = Modifier.fillMaxSize())
             } else {
                 PullToRefreshBox(
                     isRefreshing = false,
@@ -235,24 +201,46 @@ fun LibraryScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        items(
-                            items = uiState.games,
-                            key = { it.id },
-                        ) { game ->
-                            GameCard(
-                                game = game,
-                                isSelected = game.id in selectedIds,
-                                onClick = {
-                                    if (isSelectionMode) {
-                                        selectionViewModel.toggleSelection(game.id)
-                                    } else {
-                                        onGameClick(game.id)
+                        displayItems.forEach { item ->
+                            when (item) {
+                                is DisplayItem.Header -> {
+                                    item(
+                                        span = { GridItemSpan(maxLineSpan) },
+                                        contentType = "header",
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                                        ) {
+                                            Text(
+                                                text = "${item.label} (${item.count})",
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.primary,
+                                            )
+                                        }
                                     }
-                                },
-                                onLongClick = {
-                                    selectionViewModel.toggleSelection(game.id)
-                                },
-                            )
+                                }
+                                is DisplayItem.GameItem -> {
+                                    item(key = item.uniqueKey, contentType = "game") {
+                                        GameCard(
+                                            game = item.game,
+                                            isSelected = item.game.id in selectedIds,
+                                            onClick = {
+                                                if (isSelectionMode) {
+                                                    selectionViewModel.toggleSelection(item.game.id)
+                                                } else {
+                                                    onGameClick(item.game.id)
+                                                }
+                                            },
+                                            onLongClick = {
+                                                selectionViewModel.toggleSelection(item.game.id)
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -260,7 +248,20 @@ fun LibraryScreen(
         }
     }
 
-    // Dialogs
+    // ── Filter/Sort/Group Bottom Sheet ─────────────────────
+    if (showSheet) {
+        FilterSortSheet(
+            uiState = uiState,
+            collections = collections,
+            onDismiss = { showSheet = false },
+            onStatusChanged = viewModel::onStatusFilterChanged,
+            onCollectionChanged = viewModel::onCollectionFilterChanged,
+            onSortChanged = viewModel::onSortOrderChanged,
+            onGroupChanged = viewModel::onGroupByChanged,
+        )
+    }
+
+    // ── Dialogs ─────────────────────────────────────────────
     if (showBulkStatusDialog) {
         BulkStatusDialog(
             selectedCount = selectedCount,
@@ -290,217 +291,109 @@ fun LibraryScreen(
             title = { Text("Delete ${selectedCount} games?") },
             text = { Text("This cannot be undone.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteGames(selectedIds.toList())
-                        selectionViewModel.clearSelection()
-                        showBulkDeleteDialog = false
-                    },
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
+                TextButton(onClick = {
+                    viewModel.deleteGames(selectedIds.toList())
+                    selectionViewModel.clearSelection()
+                    showBulkDeleteDialog = false
+                }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
-                TextButton(onClick = { showBulkDeleteDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showBulkDeleteDialog = false }) { Text("Cancel") }
             },
         )
     }
 }
 
-// ── Selection UI ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════
+//  FILTER / SORT / GROUP BOTTOM SHEET
+// ═══════════════════════════════════════════════════════════
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SelectionTopAppBar(
-    selectedCount: Int,
-    onClearSelection: () -> Unit,
+private fun FilterSortSheet(
+    uiState: LibraryUiState,
+    collections: List<Collection>,
+    onDismiss: () -> Unit,
+    onStatusChanged: (GameStatusFilter) -> Unit,
+    onCollectionChanged: (Long?) -> Unit,
+    onSortChanged: (SortOrder) -> Unit,
+    onGroupChanged: (GroupBy) -> Unit,
 ) {
-    TopAppBar(
-        title = { Text("$selectedCount selected") },
-        navigationIcon = {
-            IconButton(onClick = onClearSelection) {
-                Icon(Icons.Default.Close, contentDescription = "Clear selection")
-            }
-        },
-    )
-}
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-@Composable
-private fun SelectionBottomBar(
-    onStatusChange: () -> Unit,
-    onAddToCollection: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Button(onClick = onStatusChange) { Text("Status") }
-            Button(onClick = onAddToCollection) {
-                Icon(Icons.Default.CollectionsBookmark, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Collection")
-            }
-            Button(
-                onClick = onDelete,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                ),
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(4.dp))
-                Text("Delete")
-            }
-        }
-    }
-}
+            Text(
+                "Filter & Sort",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
 
-// ── Dialogs ───────────────────────────────────────────────
-
-@Composable
-private fun BulkStatusDialog(
-    selectedCount: Int,
-    onDismiss: () -> Unit,
-    onStatusSelected: (GameStatus) -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Change status of $selectedCount games to:") },
-        text = {
-            Column {
-                GameStatus.entries.forEach { status ->
-                    TextButton(
-                        onClick = { onStatusSelected(status) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(status.displayName, modifier = Modifier.fillMaxWidth())
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
-    )
-}
-
-@Composable
-private fun BulkCollectionDialog(
-    collections: List<Collection>,
-    selectedCount: Int,
-    onDismiss: () -> Unit,
-    onCollectionSelected: (Long) -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add $selectedCount games to:") },
-        text = {
-            if (collections.isEmpty()) {
-                Text(
-                    "No collections yet. Create one in Settings.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+            // ── Section: Filter ──────────────────────────────
+            SectionLabel("Filter")
+            StatusChipsRow(
+                selected = uiState.selectedStatus,
+                onSelected = onStatusChanged,
+            )
+            if (collections.isNotEmpty()) {
+                CollectionChipsRow(
+                    collections = collections,
+                    selectedId = uiState.selectedCollectionId,
+                    onSelected = onCollectionChanged,
                 )
-            } else {
-                Column {
-                    collections.forEach { collection ->
-                        TextButton(
-                            onClick = { onCollectionSelected(collection.id) },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(collection.name, modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
-        },
+
+            HorizontalDivider()
+
+            // ── Section: Sort ────────────────────────────────
+            SectionLabel("Sort")
+            SortOptions(
+                current = uiState.sortOrder,
+                onSelected = onSortChanged,
+            )
+
+            HorizontalDivider()
+
+            // ── Section: Group ───────────────────────────────
+            SectionLabel("Group")
+            GroupOptions(
+                current = uiState.groupBy,
+                onSelected = onGroupChanged,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        fontWeight = FontWeight.SemiBold,
     )
 }
 
-// ── Sort ──────────────────────────────────────────────────
+// ── Filter: Status chips ──────────────────────────────────
 
 @Composable
-private fun SortDropdownMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-    currentSort: SortOrder,
-    onSortSelected: (SortOrder) -> Unit,
-) {
-    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        SortOrder.entries.forEach { order ->
-            DropdownMenuItem(
-                text = { Text(order.displayName) },
-                onClick = { onSortSelected(order) },
-                leadingIcon = {
-                    if (order == currentSort) {
-                        Icon(
-                            Icons.Default.Check,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                },
-            )
-        }
-    }
-}
-
-// ── Filter rows ───────────────────────────────────────────
-
-@Composable
-private fun CollectionFilterRow(
-    collections: List<Collection>,
-    selectedCollectionId: Long?,
-    onSelected: (Long?) -> Unit,
-) {
-    if (collections.isEmpty()) return
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        FilterChip(
-            selected = selectedCollectionId == null,
-            onClick = { onSelected(null) },
-            label = { Text("All", style = MaterialTheme.typography.labelSmall) },
-        )
-        collections.forEach { collection ->
-            FilterChip(
-                selected = selectedCollectionId == collection.id,
-                onClick = {
-                    onSelected(if (selectedCollectionId == collection.id) null else collection.id)
-                },
-                label = {
-                    Text(collection.name, style = MaterialTheme.typography.labelSmall)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun StatusFilterRow(
+private fun StatusChipsRow(
     selected: GameStatusFilter,
     onSelected: (GameStatusFilter) -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 4.dp),
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         GameStatusFilter.entries.forEach { filter ->
@@ -526,36 +419,228 @@ private fun StatusFilterRow(
     }
 }
 
-// ── Empty state ───────────────────────────────────────────
+// ── Filter: Collection chips ──────────────────────────────
 
 @Composable
-private fun EmptyLibrary(
-    onAddGame: () -> Unit,
-    modifier: Modifier = Modifier,
+private fun CollectionChipsRow(
+    collections: List<Collection>,
+    selectedId: Long?,
+    onSelected: (Long?) -> Unit,
 ) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            selected = selectedId == null,
+            onClick = { onSelected(null) },
+            label = { Text("All", style = MaterialTheme.typography.labelSmall) },
+        )
+        collections.forEach { coll ->
+            FilterChip(
+                selected = selectedId == coll.id,
+                onClick = { onSelected(if (selectedId == coll.id) null else coll.id) },
+                label = { Text(coll.name, style = MaterialTheme.typography.labelSmall) },
+            )
+        }
+    }
+}
+
+// ── Sort options ──────────────────────────────────────────
+
+@Composable
+private fun SortOptions(
+    current: SortOrder,
+    onSelected: (SortOrder) -> Unit,
+) {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 0.dp,
+    ) {
+        Column(modifier = Modifier.padding(4.dp)) {
+            SortOrder.entries.chunked(3).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    row.forEach { order ->
+                        NavigationBarItem(
+                            selected = order == current,
+                            onClick = { onSelected(order) },
+                            icon = {
+                                if (order == current) {
+                                    Icon(
+                                        Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
+                            },
+                            label = {
+                                Text(
+                                    order.displayName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                )
+                            },
+                            alwaysShowLabel = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Group options ─────────────────────────────────────────
+
+@Composable
+private fun GroupOptions(
+    current: GroupBy,
+    onSelected: (GroupBy) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        GroupBy.entries.forEach { group ->
+            FilterChip(
+                selected = group == current,
+                onClick = { onSelected(group) },
+                label = { Text(group.displayName, style = MaterialTheme.typography.labelSmall) },
+            )
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  SELECTION UI
+// ═══════════════════════════════════════════════════════════
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SelectionTopAppBar(
+    selectedCount: Int,
+    onClearSelection: () -> Unit,
+) {
+    TopAppBar(
+        title = { Text("$selectedCount selected") },
+        navigationIcon = {
+            IconButton(onClick = onClearSelection) {
+                Icon(Icons.Default.Close, contentDescription = "Clear selection")
+            }
+        },
+    )
+}
+
+@Composable
+private fun SelectionBottomBar(
+    onStatusChange: () -> Unit,
+    onAddToCollection: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    BottomAppBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+        ) {
+            Button(onClick = onStatusChange) { Text("Status") }
+            Button(onClick = onAddToCollection) {
+                Icon(Icons.Default.CollectionsBookmark, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text("Collection")
+            }
+            Button(
+                onClick = onDelete,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) { Text("Delete") }
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DIALOGS
+// ═══════════════════════════════════════════════════════════
+
+@Composable
+private fun BulkStatusDialog(
+    selectedCount: Int,
+    onDismiss: () -> Unit,
+    onStatusSelected: (GameStatus) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Change status of $selectedCount games to:") },
+        text = {
+            Column {
+                GameStatus.entries.forEach { status ->
+                    TextButton(
+                        onClick = { onStatusSelected(status) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text(status.displayName, modifier = Modifier.fillMaxWidth()) }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun BulkCollectionDialog(
+    collections: List<Collection>,
+    selectedCount: Int,
+    onDismiss: () -> Unit,
+    onCollectionSelected: (Long) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add $selectedCount games to:") },
+        text = {
+            if (collections.isEmpty()) {
+                Text("No collections yet. Create one in Settings.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column {
+                    collections.forEach { collection ->
+                        TextButton(
+                            onClick = { onCollectionSelected(collection.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(collection.name, modifier = Modifier.fillMaxWidth()) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+// ═══════════════════════════════════════════════════════════
+//  EMPTY STATE
+// ═══════════════════════════════════════════════════════════
+
+@Composable
+private fun EmptyLibrary(onAddGame: () -> Unit, modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Icon(
-            imageVector = Icons.Outlined.Gamepad,
-            contentDescription = null,
+            imageVector = Icons.Outlined.Gamepad, contentDescription = null,
             modifier = Modifier.size(72.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
         )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Your library is empty",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "Add your first game to start tracking progress",
+        Spacer(Modifier.height(16.dp))
+        Text("Your library is empty", style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(8.dp))
+        Text("Add your first game to start tracking progress",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-            textAlign = TextAlign.Center,
-        )
+            textAlign = TextAlign.Center)
     }
 }

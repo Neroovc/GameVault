@@ -25,6 +25,7 @@ data class LibraryUiState(
     val selectedStatus: GameStatusFilter = GameStatusFilter.ALL,
     val sortOrder: SortOrder = SortOrder.DATE_ADDED_DESC,
     val selectedCollectionId: Long? = null,
+    val groupBy: GroupBy = GroupBy.NONE,
 )
 
 enum class GameStatusFilter {
@@ -39,6 +40,28 @@ enum class SortOrder(val displayName: String) {
     TITLE_DESC("Title Z-A"),
     RATING("Rating"),
     PLAYTIME("Play Time"),
+}
+
+enum class GroupBy(val displayName: String) {
+    NONE("None"),
+    STATUS("Status"),
+    SOURCE("Source"),
+    CATEGORY("Category"),
+}
+
+sealed class DisplayItem {
+    abstract val uniqueKey: String
+
+    data class Header(val label: String, val count: Int) : DisplayItem() {
+        override val uniqueKey get() = "hdr:$label"
+    }
+
+    data class GameItem(
+        val game: Game,
+        val groupKey: String = "",
+    ) : DisplayItem() {
+        override val uniqueKey get() = if (groupKey.isEmpty()) "g:${game.id}" else "g:$groupKey:${game.id}"
+    }
 }
 
 class LibraryViewModel(
@@ -57,6 +80,9 @@ class LibraryViewModel(
     private val _selectedCollectionId = MutableStateFlow<Long?>(null)
     val selectedCollectionId: StateFlow<Long?> = _selectedCollectionId.asStateFlow()
 
+    private val _groupBy = MutableStateFlow(GroupBy.NONE)
+    val groupBy: StateFlow<GroupBy> = _groupBy.asStateFlow()
+
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -73,18 +99,19 @@ class LibraryViewModel(
         _selectedStatus,
         _sortOrder,
         _selectedCollectionId,
-    ) { query, status, sort, collectionId ->
-        FilterParams(query, status, sort, collectionId)
-    }.flatMapLatest { (query, status, sort, collectionId) ->
+        _groupBy,
+    ) { query, status, sort, collectionId, group ->
+        FilterParams(query, status, sort, collectionId) to group
+    }.flatMapLatest { (params, group) ->
         val source: Flow<List<Game>> = when {
-            query.isNotBlank() -> repository.searchGames(query)
-            collectionId != null -> repository.observeGamesInCollection(collectionId)
-            status == GameStatusFilter.ALL -> repository.observeAllGames()
+            params.query.isNotBlank() -> repository.searchGames(params.query)
+            params.collectionId != null -> repository.observeGamesInCollection(params.collectionId)
+            params.status == GameStatusFilter.ALL -> repository.observeAllGames()
             else -> repository.observeGamesByStatus(
-                com.gamevault.app.domain.model.GameStatus.valueOf(status.name)
+                com.gamevault.app.domain.model.GameStatus.valueOf(params.status.name)
             )
         }
-        source.map { games -> sortGames(games, sort) }
+        source.map { games -> sortGames(games, params.sort) }
     }.map { sortedGames ->
         LibraryUiState(
             games = sortedGames,
@@ -93,6 +120,7 @@ class LibraryViewModel(
             selectedStatus = _selectedStatus.value,
             sortOrder = _sortOrder.value,
             selectedCollectionId = _selectedCollectionId.value,
+            groupBy = _groupBy.value,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -100,45 +128,80 @@ class LibraryViewModel(
         initialValue = LibraryUiState(isLoading = true),
     )
 
-    fun onSearchQueryChanged(query: String) {
-        _searchQuery.value = query
-    }
+    // ── Public API ──────────────────────────────────────────
 
-    fun onStatusFilterChanged(status: GameStatusFilter) {
-        _selectedStatus.value = status
-    }
-
-    fun onSortOrderChanged(order: SortOrder) {
-        _sortOrder.value = order
-    }
+    fun onSearchQueryChanged(query: String) { _searchQuery.value = query }
+    fun onStatusFilterChanged(status: GameStatusFilter) { _selectedStatus.value = status }
+    fun onSortOrderChanged(order: SortOrder) { _sortOrder.value = order }
 
     fun onCollectionFilterChanged(collectionId: Long?) {
         _selectedCollectionId.value = collectionId
     }
 
+    fun onGroupByChanged(group: GroupBy) { _groupBy.value = group }
+
     fun deleteGame(gameId: Long) {
-        viewModelScope.launch {
-            repository.deleteGame(gameId)
-        }
+        viewModelScope.launch { repository.deleteGame(gameId) }
     }
 
     fun updateGameStatusBulk(gameIds: List<Long>, status: com.gamevault.app.domain.model.GameStatus) {
-        viewModelScope.launch {
-            repository.updateGameStatusBulk(gameIds, status)
-        }
+        viewModelScope.launch { repository.updateGameStatusBulk(gameIds, status) }
     }
 
     fun addGamesToCollection(gameIds: List<Long>, collectionId: Long) {
-        viewModelScope.launch {
-            repository.addGamesToCollection(gameIds, collectionId)
-        }
+        viewModelScope.launch { repository.addGamesToCollection(gameIds, collectionId) }
     }
 
     fun deleteGames(gameIds: List<Long>) {
-        viewModelScope.launch {
-            repository.deleteGames(gameIds)
+        viewModelScope.launch { repository.deleteGames(gameIds) }
+    }
+
+    // ── Grouping ────────────────────────────────────────────
+
+    /**
+     * Compute display items from the current games and groupBy setting.
+     * Safe to call from a `remember` or derived state.
+     */
+    fun computeDisplayItems(games: List<Game>, group: GroupBy): List<DisplayItem> {
+        if (group == GroupBy.NONE || games.isEmpty()) {
+            return games.map { DisplayItem.GameItem(it) }
+        }
+
+        return when (group) {
+            GroupBy.STATUS -> {
+                games.groupBy { it.status.displayName }.entries.map { (label, grouped) ->
+                    listOf(DisplayItem.Header(label, grouped.size)) +
+                        grouped.map { DisplayItem.GameItem(it, label) }
+                }.flatten()
+            }
+            GroupBy.SOURCE -> {
+                games.groupBy { it.sourceType.displayName }.entries.map { (label, grouped) ->
+                    listOf(DisplayItem.Header(label, grouped.size)) +
+                        grouped.map { DisplayItem.GameItem(it, label) }
+                }.flatten()
+            }
+            GroupBy.CATEGORY -> {
+                // A game can be in multiple collections — dupe across groups
+                val grouped = mutableMapOf<String, MutableList<Game>>()
+                for (game in games) {
+                    if (game.collections.isEmpty()) {
+                        grouped.getOrPut("Uncategorized") { mutableListOf() }.add(game)
+                    } else {
+                        for (coll in game.collections) {
+                            grouped.getOrPut(coll.name) { mutableListOf() }.add(game)
+                        }
+                    }
+                }
+                grouped.entries.map { (label, groupedGames) ->
+                    listOf(DisplayItem.Header(label, groupedGames.size)) +
+                        groupedGames.map { DisplayItem.GameItem(it, label) }
+                }.flatten()
+            }
+            GroupBy.NONE -> games.map { DisplayItem.GameItem(it) }
         }
     }
+
+    // ── Sorting ─────────────────────────────────────────────
 
     private fun sortGames(games: List<Game>, order: SortOrder): List<Game> {
         return when (order) {
