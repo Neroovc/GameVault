@@ -80,6 +80,9 @@ dependencies {
     // Gson (JSON backup)
     implementation("com.google.code.gson:gson:2.11.0")
 
+    // DataStore (settings persistence)
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }

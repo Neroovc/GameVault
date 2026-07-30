@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.gamevault.app.data.settings.ThemeMode
 
 private val DarkColorScheme = darkColorScheme(
     primary = Color(0xFF7C4DFF),
@@ -40,18 +41,43 @@ private val LightColorScheme = lightColorScheme(
     onSurface = Color(0xFF1C1B1F),
 )
 
+private val AmoledDarkColorScheme = darkColorScheme(
+    primary = Color(0xFF7C4DFF),
+    secondary = Color(0xFF03DAC6),
+    tertiary = Color(0xFFE040FB),
+    surface = Color(0xFF000000),
+    background = Color(0xFF000000),
+    onPrimary = Color.White,
+    onSecondary = Color.Black,
+    onBackground = Color(0xFFE6E1E5),
+    onSurface = Color(0xFFE6E1E5),
+)
+
+/**
+ * Resolve the effective dark-theme flag from a [ThemeMode].
+ */
+private fun resolveDarkTheme(mode: ThemeMode): Boolean = when (mode) {
+    ThemeMode.LIGHT -> false
+    ThemeMode.DARK -> true
+    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+}
+
 @Composable
 fun GameVaultTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
     dynamicColor: Boolean = true,
+    amoledDark: Boolean = false,
     content: @Composable () -> Unit,
 ) {
+    val darkTheme = resolveDarkTheme(themeMode)
+
     val colorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context)
             else dynamicLightColorScheme(context)
         }
+        darkTheme && amoledDark -> AmoledDarkColorScheme
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }

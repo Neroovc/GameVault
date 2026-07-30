@@ -1,9 +1,14 @@
 package com.gamevault.app
 
 import android.app.Application
+import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.local.GameVaultDatabase
+import com.gamevault.app.data.remote.F95ZoneScraper
+import com.gamevault.app.data.remote.F95ZoneSource
 import com.gamevault.app.data.repository.GameRepositoryImpl
+import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.repository.GameRepository
+import com.gamevault.app.domain.source.SourceRegistry
 
 /**
  * Application class — holds the DI container.
@@ -29,6 +34,24 @@ class AppContainer(private val app: GameVaultApp) {
         GameVaultDatabase.create(app)
     }
 
+    val f95ZoneScraper: F95ZoneScraper by lazy {
+        F95ZoneScraper()
+    }
+
+    val f95ZoneSource: F95ZoneSource by lazy {
+        F95ZoneSource(f95ZoneScraper)
+    }
+
+    val sourceRegistry: SourceRegistry by lazy {
+        SourceRegistry().apply {
+            register(f95ZoneSource)
+        }
+    }
+
+    val appSettings: AppSettings by lazy {
+        AppSettings(app)
+    }
+
     val gameRepository: GameRepository by lazy {
         GameRepositoryImpl(
             gameDao = database.gameDao(),
@@ -36,6 +59,19 @@ class AppContainer(private val app: GameVaultApp) {
             sessionDao = database.playSessionDao(),
             tagDao = database.tagDao(),
             collectionDao = database.collectionDao(),
+            gameCollectionDao = database.gameCollectionDao(),
+        )
+    }
+
+    val gameVaultBackup: GameVaultBackup by lazy {
+        GameVaultBackup(
+            gameDao = database.gameDao(),
+            routeDao = database.gameRouteDao(),
+            sessionDao = database.playSessionDao(),
+            tagDao = database.tagDao(),
+            collectionDao = database.collectionDao(),
+            gameCollectionDao = database.gameCollectionDao(),
+            gameTagDao = database.gameTagDao(),
         )
     }
 }
