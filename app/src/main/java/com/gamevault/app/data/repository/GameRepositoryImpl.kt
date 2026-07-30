@@ -1,10 +1,12 @@
 package com.gamevault.app.data.repository
 
 import com.gamevault.app.data.local.dao.CollectionDao
+import com.gamevault.app.data.local.dao.GameCollectionDao
 import com.gamevault.app.data.local.dao.GameDao
 import com.gamevault.app.data.local.dao.GameRouteDao
 import com.gamevault.app.data.local.dao.PlaySessionDao
 import com.gamevault.app.data.local.dao.TagDao
+import com.gamevault.app.data.local.entity.GameCollectionCrossRef
 import com.gamevault.app.data.local.entity.GameRouteEntity
 import com.gamevault.app.data.local.entity.GameTagCrossRef
 import com.gamevault.app.data.local.entity.PlaySessionEntity
@@ -27,6 +29,7 @@ class GameRepositoryImpl(
     private val sessionDao: PlaySessionDao,
     private val tagDao: TagDao,
     private val collectionDao: CollectionDao,
+    private val gameCollectionDao: GameCollectionDao,
 ) : GameRepository {
 
     // ── Games ──────────────────────────────────────────────
@@ -72,6 +75,19 @@ class GameRepositoryImpl(
     }
 
     override suspend fun getGameCount(): Int = gameDao.getGameCount()
+
+    override suspend fun updateGameStatusBulk(gameIds: List<Long>, status: GameStatus) {
+        gameDao.updateGameStatusBulk(gameIds, status.name)
+    }
+
+    override suspend fun addGamesToCollection(gameIds: List<Long>, collectionId: Long) {
+        val crossRefs = gameIds.map { GameCollectionCrossRef(it, collectionId) }
+        gameCollectionDao.insertBulk(crossRefs)
+    }
+
+    override suspend fun deleteGames(gameIds: List<Long>) {
+        gameDao.deleteGamesBulk(gameIds)
+    }
 
     // ── Routes ─────────────────────────────────────────────
 
@@ -134,6 +150,37 @@ class GameRepositoryImpl(
     override suspend fun saveCollection(collection: Collection): Long =
         collectionDao.insertCollection(collection.toEntity())
 
+    override suspend fun updateCollection(collection: Collection) =
+        collectionDao.updateCollection(collection.toEntity())
+
     override suspend fun deleteCollection(collection: Collection) =
         collectionDao.deleteCollection(collection.toEntity())
+
+    // ── Collection Membership ──────────────────────────────
+
+    override suspend fun addGameToCollection(gameId: Long, collectionId: Long) {
+        gameCollectionDao.insert(GameCollectionCrossRef(gameId, collectionId))
+    }
+
+    override suspend fun removeGameFromCollection(gameId: Long, collectionId: Long) {
+        gameCollectionDao.deleteByGameAndCollection(gameId, collectionId)
+    }
+
+    override suspend fun getCollectionIdsForGame(gameId: Long): List<Long> =
+        gameCollectionDao.getCollectionIdsForGame(gameId)
+
+    override fun observeGamesInCollection(collectionId: Long): Flow<List<Game>> =
+        gameDao.getGamesInCollectionFlow(collectionId).map { list -> list.map { it.toDomainModel() } }
+
+    override suspend fun getGameCountForCollection(collectionId: Long): Int =
+        gameCollectionDao.getGameCountForCollection(collectionId)
+
+    override fun observeGameCollections(gameId: Long): Flow<List<Collection>> =
+        gameCollectionDao.getCollectionsForGameFlow(gameId).map { list -> list.map { it.toDomainModel() } }
+
+    override fun observeAllSessions(): Flow<List<PlaySession>> =
+        sessionDao.getAllSessionsFlow().map { list -> list.map { it.toDomainModel() } }
+
+    override suspend fun getAllPlaySessions(): List<PlaySession> =
+        sessionDao.getAllSessions().map { it.toDomainModel() }
 }

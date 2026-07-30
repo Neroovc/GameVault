@@ -3,6 +3,7 @@ package com.gamevault.app.ui.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,6 +24,7 @@ data class LibraryUiState(
     val isLoading: Boolean = true,
     val selectedStatus: GameStatusFilter = GameStatusFilter.ALL,
     val sortOrder: SortOrder = SortOrder.DATE_ADDED_DESC,
+    val selectedCollectionId: Long? = null,
 )
 
 enum class GameStatusFilter {
@@ -52,16 +54,31 @@ class LibraryViewModel(
     private val _sortOrder = MutableStateFlow(SortOrder.DATE_ADDED_DESC)
     val sortOrder: StateFlow<SortOrder> = _sortOrder.asStateFlow()
 
+    private val _selectedCollectionId = MutableStateFlow<Long?>(null)
+    val selectedCollectionId: StateFlow<Long?> = _selectedCollectionId.asStateFlow()
+
+    val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private data class FilterParams(
+        val query: String,
+        val status: GameStatusFilter,
+        val sort: SortOrder,
+        val collectionId: Long?,
+    )
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val uiState: StateFlow<LibraryUiState> = combine(
         _searchQuery,
         _selectedStatus,
         _sortOrder,
-    ) { query, status, sort ->
-        Triple(query, status, sort)
-    }.flatMapLatest { (query, status, sort) ->
+        _selectedCollectionId,
+    ) { query, status, sort, collectionId ->
+        FilterParams(query, status, sort, collectionId)
+    }.flatMapLatest { (query, status, sort, collectionId) ->
         val source: Flow<List<Game>> = when {
             query.isNotBlank() -> repository.searchGames(query)
+            collectionId != null -> repository.observeGamesInCollection(collectionId)
             status == GameStatusFilter.ALL -> repository.observeAllGames()
             else -> repository.observeGamesByStatus(
                 com.gamevault.app.domain.model.GameStatus.valueOf(status.name)
@@ -75,6 +92,7 @@ class LibraryViewModel(
             isLoading = false,
             selectedStatus = _selectedStatus.value,
             sortOrder = _sortOrder.value,
+            selectedCollectionId = _selectedCollectionId.value,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -94,9 +112,31 @@ class LibraryViewModel(
         _sortOrder.value = order
     }
 
+    fun onCollectionFilterChanged(collectionId: Long?) {
+        _selectedCollectionId.value = collectionId
+    }
+
     fun deleteGame(gameId: Long) {
         viewModelScope.launch {
             repository.deleteGame(gameId)
+        }
+    }
+
+    fun updateGameStatusBulk(gameIds: List<Long>, status: com.gamevault.app.domain.model.GameStatus) {
+        viewModelScope.launch {
+            repository.updateGameStatusBulk(gameIds, status)
+        }
+    }
+
+    fun addGamesToCollection(gameIds: List<Long>, collectionId: Long) {
+        viewModelScope.launch {
+            repository.addGamesToCollection(gameIds, collectionId)
+        }
+    }
+
+    fun deleteGames(gameIds: List<Long>) {
+        viewModelScope.launch {
+            repository.deleteGames(gameIds)
         }
     }
 

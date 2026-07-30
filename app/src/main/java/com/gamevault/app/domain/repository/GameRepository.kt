@@ -52,8 +52,26 @@ interface GameRepository {
 
     // ── Collections ────────────────────────────────────────
 
+    suspend fun updateGameStatusBulk(gameIds: List<Long>, status: GameStatus)
+    suspend fun addGamesToCollection(gameIds: List<Long>, collectionId: Long)
+    suspend fun deleteGames(gameIds: List<Long>)
+
     fun observeAllCollections(): Flow<List<Collection>>
     suspend fun getAllCollections(): List<Collection>
     suspend fun saveCollection(collection: Collection): Long
+    suspend fun updateCollection(collection: Collection)
     suspend fun deleteCollection(collection: Collection)
+
+    // ── Collection Membership ──────────────────────────────
+
+    suspend fun addGameToCollection(gameId: Long, collectionId: Long)
+    suspend fun removeGameFromCollection(gameId: Long, collectionId: Long)
+    suspend fun getCollectionIdsForGame(gameId: Long): List<Long>
+    fun observeGamesInCollection(collectionId: Long): Flow<List<Game>>
+    suspend fun getGameCountForCollection(collectionId: Long): Int
+
+    fun observeGameCollections(gameId: Long): Flow<List<Collection>>
+
+    fun observeAllSessions(): Flow<List<PlaySession>>
+    suspend fun getAllPlaySessions(): List<PlaySession>
 }
