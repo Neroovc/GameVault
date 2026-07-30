@@ -3,6 +3,8 @@ package com.gamevault.app.ui.addgame
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.gamevault.app.data.remote.F95ZoneScraper
 import com.gamevault.app.data.remote.ScrapeResult
 import com.gamevault.app.domain.model.Game
@@ -59,7 +61,8 @@ class AddGameViewModel(
 
         viewModelScope.launch {
             _uiState.update { it.copy(isScraping = true, scrapeError = null) }
-            when (val result = scraper.scrapeGame(url)) {
+            val scrapeResult = withContext(Dispatchers.IO) { scraper.scrapeGame(url) }
+            when (val result = scrapeResult) {
                 is ScrapeResult.Success -> {
                     val game = result.game
                     _uiState.update {
