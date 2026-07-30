@@ -153,19 +153,32 @@ class F95ZoneScraper {
     }
 
     private fun extractCoverUrl(doc: Document): String? {
-        // Try multiple cover selectors
+        // Prioritise images embedded in the post body (actual game covers/screenshots)
+        // before falling back to the thread's og:image (usually a banner/title card).
         val selectors = listOf(
-            "meta[property=\"og:image\"]",
+            // First attachment image inside the post body (the OP's first image)
+            "article.message-body .bbWrapper a[href*=\"attachments\"] img",
+            // Direct image in the post body
             "article.message-body .bbWrapper img[src*=\"attachments\"]",
+            // Any linked attachment image
             "a[href*=\"attachments\"] img",
-            ".message-content img[src*=\"f95zone\"]",
+            // Other images inside the message
+            ".message-content img",
+            // Fallback: thread metadata banner
+            "meta[property=\"og:image\"]",
+            // Last resort: any meta image
+            "meta[property=\"twitter:image\"]",
         )
 
         for (selector in selectors) {
             val el = doc.selectFirst(selector) ?: continue
             val url = when {
                 selector.startsWith("meta") -> el.attr("content")
-                else -> el.attr("src")
+                else -> {
+                    val src = el.attr("src")
+                    // Skip icons / smilies / emoji (they're tiny)
+                    if (src.contains("/data/") || src.contains("attachments")) src else ""
+                }
             }
             if (url.isNotBlank()) return normalizeUrl(url)
         }

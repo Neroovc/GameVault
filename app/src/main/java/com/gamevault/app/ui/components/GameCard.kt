@@ -67,7 +67,7 @@ fun GameCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(3f / 4f),
+                    .aspectRatio(4f / 3f),
             ) {
                 if (game.coverUrl != null) {
                     AsyncImage(
