@@ -27,6 +27,9 @@ interface GameRouteDao {
     @Delete
     suspend fun deleteRoute(route: GameRouteEntity)
 
+    @Query("SELECT * FROM game_routes ORDER BY `order` ASC")
+    suspend fun getAllRoutes(): List<GameRouteEntity>
+
     @Query("DELETE FROM game_routes WHERE game_id = :gameId")
     suspend fun deleteRoutesForGame(gameId: Long)
 }

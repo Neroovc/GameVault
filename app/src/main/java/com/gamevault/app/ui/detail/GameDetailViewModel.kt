@@ -3,6 +3,7 @@ package com.gamevault.app.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
 import com.gamevault.app.domain.model.GameStatus
@@ -22,6 +23,12 @@ data class GameDetailUiState(
     val sessions: List<PlaySession> = emptyList(),
     val totalPlayTime: Long = 0,
     val isLoading: Boolean = true,
+    val allCollections: List<Collection> = emptyList(),
+    val gameCollections: List<Collection> = emptyList(),
+    val showCollectionPicker: Boolean = false,
+    val showDeleteConfirm: Boolean = false,
+    val showEditNotes: Boolean = false,
+    val editNotesText: String = "",
 )
 
 class GameDetailViewModel(
@@ -29,17 +36,35 @@ class GameDetailViewModel(
     private val repository: GameRepository,
 ) : ViewModel() {
 
+    private val _showCollectionPicker = MutableStateFlow(false)
+    private val _showDeleteConfirm = MutableStateFlow(false)
+    private val _showEditNotes = MutableStateFlow(false)
+    private val _editNotesText = MutableStateFlow("")
+
     val uiState: StateFlow<GameDetailUiState> = combine(
         repository.observeGameById(gameId),
         repository.observeRoutesForGame(gameId),
         repository.observeSessionsForGame(gameId),
-    ) { game, routes, sessions ->
+        repository.observeAllCollections(),
+        repository.observeGameCollections(gameId),
+        _showCollectionPicker,
+        _showDeleteConfirm,
+        _showEditNotes,
+        _editNotesText,
+    ) { game, routes, sessions, allCollections, gameCollections,
+        showPicker, showDelete, showNotes, notesText ->
         GameDetailUiState(
             game = game,
             routes = routes,
             sessions = sessions,
             totalPlayTime = sessions.sumOf { it.durationMinutes ?: 0L },
             isLoading = false,
+            allCollections = allCollections,
+            gameCollections = gameCollections,
+            showCollectionPicker = showPicker,
+            showDeleteConfirm = showDelete,
+            showEditNotes = showNotes,
+            editNotesText = notesText,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -65,6 +90,7 @@ class GameDetailViewModel(
         viewModelScope.launch {
             val current = uiState.value.game ?: return@launch
             repository.updateGame(current.copy(notes = notes))
+            dismissEditNotes()
         }
     }
 
@@ -125,6 +151,59 @@ class GameDetailViewModel(
                 )
             )
         }
+    }
+
+    // ── Collection Picker ───────────────────────────────────
+
+    fun showCollectionPicker() {
+        _showCollectionPicker.value = true
+    }
+
+    fun dismissCollectionPicker() {
+        _showCollectionPicker.value = false
+    }
+
+    fun toggleGameCollection(collectionId: Long, currentlyInCollection: Boolean) {
+        viewModelScope.launch {
+            if (currentlyInCollection) {
+                repository.removeGameFromCollection(gameId, collectionId)
+            } else {
+                repository.addGameToCollection(gameId, collectionId)
+            }
+        }
+    }
+
+    // ── Delete Game ─────────────────────────────────────────
+
+    fun showDeleteConfirm() {
+        _showDeleteConfirm.value = true
+    }
+
+    fun dismissDeleteConfirm() {
+        _showDeleteConfirm.value = false
+    }
+
+    fun deleteGame() {
+        viewModelScope.launch {
+            repository.deleteGame(gameId)
+            _showDeleteConfirm.value = false
+        }
+    }
+
+    // ── Edit Notes ──────────────────────────────────────────
+
+    fun showEditNotes() {
+        _editNotesText.value = uiState.value.game?.notes ?: ""
+        _showEditNotes.value = true
+    }
+
+    fun setEditNotesText(text: String) {
+        _editNotesText.value = text
+    }
+
+    fun dismissEditNotes() {
+        _showEditNotes.value = false
+        _editNotesText.value = ""
     }
 
     class Factory(

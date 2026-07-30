@@ -6,8 +6,10 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.gamevault.app.data.local.converter.Converters
 import com.gamevault.app.data.local.dao.CollectionDao
+import com.gamevault.app.data.local.dao.GameCollectionDao
 import com.gamevault.app.data.local.dao.GameDao
 import com.gamevault.app.data.local.dao.GameRouteDao
+import com.gamevault.app.data.local.dao.GameTagDao
 import com.gamevault.app.data.local.dao.PlaySessionDao
 import com.gamevault.app.data.local.dao.TagDao
 import com.gamevault.app.data.local.entity.CollectionEntity
@@ -28,7 +30,7 @@ import com.gamevault.app.data.local.entity.TagEntity
         GameTagCrossRef::class,
         GameCollectionCrossRef::class,
     ],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class GameVaultDatabase : RoomDatabase() {
@@ -38,6 +40,8 @@ abstract class GameVaultDatabase : RoomDatabase() {
     abstract fun playSessionDao(): PlaySessionDao
     abstract fun tagDao(): TagDao
     abstract fun collectionDao(): CollectionDao
+    abstract fun gameCollectionDao(): GameCollectionDao
+    abstract fun gameTagDao(): GameTagDao
 
     companion object {
         private const val DB_NAME = "gamevault.db"

@@ -38,6 +38,15 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE status = :status ORDER BY date_added DESC")
     fun getGamesByStatusFlow(status: String): Flow<List<GameWithRelations>>
 
+    @Transaction
+    @Query("""
+        SELECT * FROM games
+        INNER JOIN game_collection_cross_ref ON games.id = game_collection_cross_ref.game_id
+        WHERE game_collection_cross_ref.collection_id = :collectionId
+        ORDER BY games.date_added DESC
+    """)
+    fun getGamesInCollectionFlow(collectionId: Long): Flow<List<GameWithRelations>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGame(game: GameEntity): Long
 
@@ -52,4 +61,10 @@ interface GameDao {
 
     @Query("SELECT COUNT(*) FROM games")
     suspend fun getGameCount(): Int
+
+    @Query("UPDATE games SET status = :status WHERE id IN (:gameIds)")
+    suspend fun updateGameStatusBulk(gameIds: List<Long>, status: String)
+
+    @Query("DELETE FROM games WHERE id IN (:gameIds)")
+    suspend fun deleteGamesBulk(gameIds: List<Long>)
 }

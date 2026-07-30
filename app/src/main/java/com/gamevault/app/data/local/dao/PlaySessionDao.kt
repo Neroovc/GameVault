@@ -31,6 +31,12 @@ interface PlaySessionDao {
     @Update
     suspend fun updateSession(session: PlaySessionEntity)
 
+    @Query("SELECT * FROM play_sessions ORDER BY start_time DESC")
+    fun getAllSessionsFlow(): Flow<List<PlaySessionEntity>>
+
+    @Query("SELECT * FROM play_sessions ORDER BY start_time DESC")
+    suspend fun getAllSessions(): List<PlaySessionEntity>
+
     @Delete
     suspend fun deleteSession(session: PlaySessionEntity)
 }

@@ -20,22 +20,30 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -59,8 +67,10 @@ import com.gamevault.app.domain.model.RouteStatus
 fun GameDetailScreen(
     viewModel: GameDetailViewModel,
     onBack: () -> Unit,
+    onDeleted: (() -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var notesEditText by remember { mutableStateOf("") }
 
     Scaffold(
         topBar = {
@@ -69,6 +79,18 @@ fun GameDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = viewModel::showEditNotes) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit notes")
+                    }
+                    IconButton(onClick = viewModel::showDeleteConfirm) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete game",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 },
             )
@@ -121,6 +143,14 @@ fun GameDetailScreen(
                     )
                 }
 
+                // Collections section
+                item {
+                    CollectionsSection(
+                        gameCollections = uiState.gameCollections,
+                        onAddToCollection = viewModel::showCollectionPicker,
+                    )
+                }
+
                 // Routes section
                 item {
                     RoutesSectionHeader(onAddRoute = { name -> viewModel.addRoute(name) })
@@ -134,11 +164,12 @@ fun GameDetailScreen(
                     )
                 }
 
-                // Notes
-                if (game.notes != null) {
-                    item {
-                        NotesSection(notes = game.notes)
-                    }
+                // Notes (read-only display + edit trigger)
+                item {
+                    NotesSection(
+                        notes = game.notes,
+                        onEdit = viewModel::showEditNotes,
+                    )
                 }
 
                 // Source info
@@ -153,6 +184,107 @@ fun GameDetailScreen(
             }
         }
     }
+
+    // Collection picker dialog
+    if (uiState.showCollectionPicker) {
+        val gameCollectionIds = uiState.gameCollections.map { it.id }.toSet()
+        AlertDialog(
+            onDismissRequest = viewModel::dismissCollectionPicker,
+            title = { Text("Add to Collection") },
+            text = {
+                Column {
+                    if (uiState.allCollections.isEmpty()) {
+                        Text(
+                            "No collections yet. Create one in Settings.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        uiState.allCollections.forEach { collection ->
+                            val isInCollection = collection.id in gameCollectionIds
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Checkbox(
+                                    checked = isInCollection,
+                                    onCheckedChange = {
+                                        viewModel.toggleGameCollection(collection.id, isInCollection)
+                                    },
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = collection.name,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = viewModel::dismissCollectionPicker) {
+                    Text("Done")
+                }
+            },
+        )
+    }
+
+    // Delete confirmation dialog
+    if (uiState.showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissDeleteConfirm,
+            title = { Text("Delete Game") },
+            text = {
+                Text("Are you sure you want to delete \"${uiState.game?.title ?: ""}\"? This cannot be undone.")
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.deleteGame()
+                        onDeleted?.invoke()
+                        onBack()
+                    },
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissDeleteConfirm) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    // Edit notes dialog
+    if (uiState.showEditNotes) {
+        AlertDialog(
+            onDismissRequest = viewModel::dismissEditNotes,
+            title = { Text("Edit Notes") },
+            text = {
+                OutlinedTextField(
+                    value = uiState.editNotesText,
+                    onValueChange = viewModel::setEditNotesText,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 8,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.updateNotes(uiState.editNotesText) }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = viewModel::dismissEditNotes) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
 }
 
 @Composable
@@ -165,7 +297,6 @@ private fun GameHeader(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        // Cover
         Card(
             modifier = Modifier
                 .width(120.dp)
@@ -193,7 +324,6 @@ private fun GameHeader(
             }
         }
 
-        // Info
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = game.title,
@@ -218,7 +348,6 @@ private fun GameHeader(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Rating
             RatingBar(
                 rating = game.personalRating ?: 0f,
                 onRatingChange = onRatingChange,
@@ -241,7 +370,7 @@ private fun RatingBar(
             }) {
                 Icon(
                     imageVector = if (filled) Icons.Filled.Star
-                    else if (rating >= star - 0.5f) Icons.Filled.Star // half visual
+                    else if (rating >= star - 0.5f) Icons.Filled.Star
                     else Icons.Outlined.StarBorder,
                     contentDescription = "Star $star",
                     tint = if (filled || rating >= star - 0.5f)
@@ -336,6 +465,62 @@ private fun PlaySessionControls(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+private fun CollectionsSection(
+    gameCollections: List<com.gamevault.app.domain.model.Collection>,
+    onAddToCollection: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Collections", style = MaterialTheme.typography.titleSmall)
+                FilledTonalButton(onClick = onAddToCollection) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Add", style = MaterialTheme.typography.labelSmall)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            if (gameCollections.isEmpty()) {
+                Text(
+                    text = "Not in any collection",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    gameCollections.forEach { collection ->
+                        AssistChip(
+                            onClick = { },
+                            label = {
+                                Text(collection.name, style = MaterialTheme.typography.labelSmall)
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Bookmark,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun RoutesSectionHeader(
     onAddRoute: (String) -> Unit,
 ) {
@@ -405,19 +590,39 @@ private fun RouteItem(
 }
 
 @Composable
-private fun NotesSection(notes: String) {
+private fun NotesSection(
+    notes: String?,
+    onEdit: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Notes", style = MaterialTheme.typography.titleSmall)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Notes", style = MaterialTheme.typography.titleSmall)
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = "Edit notes", modifier = Modifier.size(18.dp))
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = notes,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (notes != null) {
+                Text(
+                    text = notes,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                Text(
+                    text = "No notes yet. Tap edit to add notes.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                )
+            }
         }
     }
 }
