@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CollectionBookmark
+import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -37,8 +37,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.unit.dp
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CollectionsScreen(
     viewModel: CollectionsViewModel,
@@ -94,7 +96,7 @@ fun CollectionsScreen(
                 verticalArrangement = Arrangement.Center,
             ) {
                 Icon(
-                    Icons.Default.CollectionBookmark,
+                    Icons.Default.Collections,
                     contentDescription = null,
                     modifier = Modifier.size(72.dp),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
@@ -197,7 +199,7 @@ private fun CollectionCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                Icons.Default.CollectionBookmark,
+                Icons.Default.Collections,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(40.dp),

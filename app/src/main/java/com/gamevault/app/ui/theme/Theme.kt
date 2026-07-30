@@ -56,6 +56,7 @@ private val AmoledDarkColorScheme = darkColorScheme(
 /**
  * Resolve the effective dark-theme flag from a [ThemeMode].
  */
+@Composable
 private fun resolveDarkTheme(mode: ThemeMode): Boolean = when (mode) {
     ThemeMode.LIGHT -> false
     ThemeMode.DARK -> true

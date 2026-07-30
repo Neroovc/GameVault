@@ -51,20 +51,20 @@ class GameDetailViewModel(
         _showDeleteConfirm,
         _showEditNotes,
         _editNotesText,
-    ) { game, routes, sessions, allCollections, gameCollections,
-        showPicker, showDelete, showNotes, notesText ->
+    ) { array ->
+        @Suppress("UNCHECKED_CAST")
         GameDetailUiState(
-            game = game,
-            routes = routes,
-            sessions = sessions,
-            totalPlayTime = sessions.sumOf { it.durationMinutes ?: 0L },
+            game = array[0] as Game?,
+            routes = array[1] as List<GameRoute>,
+            sessions = array[2] as List<PlaySession>,
+            totalPlayTime = (array[2] as List<PlaySession>).sumOf { it.durationMinutes ?: 0L },
             isLoading = false,
-            allCollections = allCollections,
-            gameCollections = gameCollections,
-            showCollectionPicker = showPicker,
-            showDeleteConfirm = showDelete,
-            showEditNotes = showNotes,
-            editNotesText = notesText,
+            allCollections = array[3] as List<Collection>,
+            gameCollections = array[4] as List<Collection>,
+            showCollectionPicker = array[5] as Boolean,
+            showDeleteConfirm = array[6] as Boolean,
+            showEditNotes = array[7] as Boolean,
+            editNotesText = array[8] as String,
         )
     }.stateIn(
         scope = viewModelScope,

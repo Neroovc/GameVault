@@ -156,7 +156,7 @@ fun AddGameScreen(
                 EnumDropdown(
                     label = "Engine",
                     selected = state.engine,
-                    values = GameEngine.entries,
+                    values = GameEngine.entries.toTypedArray(),
                     onSelected = viewModel::updateEngine,
                     displayName = { it.displayName },
                 )
@@ -165,7 +165,7 @@ fun AddGameScreen(
                 EnumDropdown(
                     label = "Status",
                     selected = state.status,
-                    values = GameStatus.entries,
+                    values = GameStatus.entries.toTypedArray(),
                     onSelected = viewModel::updateStatus,
                     displayName = { it.displayName },
                 )
@@ -174,7 +174,7 @@ fun AddGameScreen(
                 EnumDropdown(
                     label = "Source",
                     selected = state.sourceType,
-                    values = SourceType.entries,
+                    values = SourceType.entries.toTypedArray(),
                     onSelected = viewModel::updateSourceType,
                     displayName = { it.displayName },
                 )

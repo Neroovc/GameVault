@@ -21,6 +21,7 @@ interface GameRepository {
     fun searchGames(query: String): Flow<List<Game>>
     fun observeGamesByStatus(status: GameStatus): Flow<List<Game>>
 
+    suspend fun getAllGames(): List<Game>
     suspend fun getGameById(gameId: Long): Game?
     suspend fun saveGame(game: Game): Long
     suspend fun updateGame(game: Game)

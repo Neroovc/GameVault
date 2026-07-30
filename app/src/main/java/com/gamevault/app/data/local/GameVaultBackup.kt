@@ -256,7 +256,7 @@ class GameVaultBackup(
 
             // Import routes
             for (br in backupData.routes) {
-                val gameId = newGameIds.getOrElse(br.gameIndex) { continue }
+                val gameId = newGameIds[br.gameIndex] ?: continue
                 routeDao.insertRoute(
                     GameRouteEntity(
                         gameId = gameId,
@@ -271,7 +271,7 @@ class GameVaultBackup(
 
             // Import play sessions
             for (bps in backupData.playSessions) {
-                val gameId = newGameIds.getOrElse(bps.gameIndex) { continue }
+                val gameId = newGameIds[bps.gameIndex] ?: continue
                 sessionDao.insertSession(
                     PlaySessionEntity(
                         gameId = gameId,
@@ -292,15 +292,15 @@ class GameVaultBackup(
 
             // Import game-collection cross-refs
             for (bgc in backupData.gameCollections) {
-                val gameId = newGameIds.getOrElse(bgc.gameIndex) { continue }
-                val collectionId = newCollectionIds.getOrElse(bgc.collectionIndex) { continue }
+                val gameId = newGameIds[bgc.gameIndex] ?: continue
+                val collectionId = newCollectionIds[bgc.collectionIndex] ?: continue
                 gameCollectionDao.insert(GameCollectionCrossRef(gameId, collectionId))
             }
 
             // Import game-tag cross-refs
             for (bgt in backupData.gameTags) {
-                val gameId = newGameIds.getOrElse(bgt.gameIndex) { continue }
-                val tagId = newTagIds.getOrElse(bgt.tagIndex) { continue }
+                val gameId = newGameIds[bgt.gameIndex] ?: continue
+                val tagId = newTagIds[bgt.tagIndex] ?: continue
                 gameTagDao.insert(GameTagCrossRef(gameId, tagId))
             }
 

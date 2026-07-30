@@ -13,3 +13,4 @@
 *.ap_
 *.dex
 local.properties
+.atl/

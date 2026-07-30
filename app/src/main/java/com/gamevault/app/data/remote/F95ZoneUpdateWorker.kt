@@ -37,7 +37,7 @@ class F95ZoneUpdateWorker(
         val scraper = app.appContainer.f95ZoneScraper
 
         // Find tracked F95Zone games
-        val allGames = repository.getAllGamesList()
+        val allGames = repository.getAllGames()
         val trackedGames = allGames.filter { it.sourceType == SourceType.F95ZONE && it.f95Url != null }
 
         if (trackedGames.isEmpty()) return Result.success()

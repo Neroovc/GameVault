@@ -77,16 +77,17 @@ class SettingsViewModel(
         _renameTarget,
         _newCollectionName,
         _backupUi,
-    ) { theme, amoled, collections, showCreate, showRename, renameTarget, newName, backup ->
+    ) { array ->
+        @Suppress("UNCHECKED_CAST")
         SettingsUiState(
-            themeMode = theme,
-            amoledDark = amoled,
-            collections = collections,
-            showCreateDialog = showCreate,
-            showRenameDialog = showRename,
-            renameTarget = renameTarget,
-            newCollectionName = newName,
-            backupUi = backup,
+            themeMode = array[0] as ThemeMode,
+            amoledDark = array[1] as Boolean,
+            collections = array[2] as List<CollectionWithCount>,
+            showCreateDialog = array[3] as Boolean,
+            showRenameDialog = array[4] as Boolean,
+            renameTarget = array[5] as Collection?,
+            newCollectionName = array[6] as String,
+            backupUi = array[7] as BackupUiState,
         )
     }.stateIn(
         scope = viewModelScope,

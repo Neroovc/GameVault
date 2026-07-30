@@ -1,5 +1,6 @@
 package com.gamevault.app.data.remote
 
+import com.gamevault.app.data.remote.ScrapeResult
 import com.gamevault.app.domain.source.GameSource
 import com.gamevault.app.domain.source.SearchResult
 import com.gamevault.app.domain.source.SourceResult
@@ -36,12 +37,12 @@ class F95ZoneSource(
     override suspend fun fetchDetail(url: String): SourceResult<Game> {
         return try {
             when (val result = scraper.scrapeGame(url)) {
-                is F95ZoneScraper.ScrapeResult.Success -> {
+                is ScrapeResult.Success -> {
                     // The scraper already populates a Game object from HTML.
                     // Override the status to NEW since it's being imported.
                     SourceResult.Success(result.game.copy(status = GameStatus.NOT_STARTED))
                 }
-                is F95ZoneScraper.ScrapeResult.Error -> {
+                is ScrapeResult.Error -> {
                     SourceResult.Error(result.message)
                 }
             }

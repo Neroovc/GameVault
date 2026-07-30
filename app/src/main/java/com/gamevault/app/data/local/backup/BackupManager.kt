@@ -23,14 +23,15 @@ class BackupManager(
      * Export all data to a JSON string.
      */
     suspend fun exportJson(): String {
-        val allGames = repository.getAllGamesList()
+        val allGames = repository.getAllGames()
         val allCollections = repository.getAllCollections()
         val allTags = repository.getAllTags()
 
-        val backup = BackupData(
-            games = allGames.map { game ->
-                val routes = repository.getRoutesForGame(game.id)
-                val sessions = repository.getSessionsForGame(game.id)
+        val backupGames = mutableListOf<BackupGame>()
+        for (game in allGames) {
+            val routes = repository.getRoutesForGame(game.id)
+            val sessions = repository.getSessionsForGame(game.id)
+            backupGames.add(
                 BackupGame(
                     id = game.id,
                     title = game.title,
@@ -67,7 +68,11 @@ class BackupManager(
                     tagNames = game.tags.map { it.name },
                     collectionNames = game.collections.map { it.name },
                 )
-            },
+            )
+        }
+
+        val backup = BackupData(
+            games = backupGames,
             collections = allCollections.map { coll ->
                 BackupCollection(
                     name = coll.name,

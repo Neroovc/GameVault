@@ -46,6 +46,9 @@ class GameRepositoryImpl(
     override fun observeGamesByStatus(status: GameStatus): Flow<List<Game>> =
         gameDao.getGamesByStatusFlow(status.name).map { list -> list.map { it.toDomainModel() } }
 
+    override suspend fun getAllGames(): List<Game> =
+        gameDao.getAllGames().map { it.toDomainModel() }
+
     override suspend fun getGameById(gameId: Long): Game? =
         gameDao.getGameById(gameId)?.toDomainModel()
 
