@@ -1,8 +1,10 @@
 package com.gamevault.app.ui.library
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -42,7 +44,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
@@ -83,13 +84,12 @@ fun LibraryScreen(
     val isSelectionMode by selectionViewModel.isSelectionMode.collectAsState()
     val selectedCount by selectionViewModel.selectedCount.collectAsState()
     var searchExpanded by remember { mutableStateOf(false) }
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-
+    var showFilters by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
-    var showFilterMenu by remember { mutableStateOf(false) }
     var showBulkStatusDialog by remember { mutableStateOf(false) }
     var showBulkCollectionDialog by remember { mutableStateOf(false) }
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -100,12 +100,23 @@ fun LibraryScreen(
                     onClearSelection = selectionViewModel::clearSelection,
                 )
             } else {
-                LargeTopAppBar(
+                TopAppBar(
                     title = { Text("GameVault") },
                     scrollBehavior = scrollBehavior,
                     actions = {
                         IconButton(onClick = { searchExpanded = !searchExpanded }) {
                             Icon(Icons.Default.Search, contentDescription = "Search")
+                        }
+                        IconButton(onClick = { showFilters = !showFilters }) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = "Filter",
+                                tint = if (showFilters ||
+                                    uiState.selectedStatus != GameStatusFilter.ALL ||
+                                    uiState.selectedCollectionId != null
+                                ) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface,
+                            )
                         }
                         Box {
                             IconButton(onClick = { showSortMenu = true }) {
@@ -119,15 +130,6 @@ fun LibraryScreen(
                                     viewModel.onSortOrderChanged(order)
                                     showSortMenu = false
                                 },
-                            )
-                        }
-                        Box {
-                            IconButton(onClick = { showFilterMenu = true }) {
-                                Icon(Icons.Default.FilterList, contentDescription = "Filter")
-                            }
-                            FilterDropdownMenu(
-                                expanded = showFilterMenu,
-                                onDismiss = { showFilterMenu = false },
                             )
                         }
                     },
@@ -153,6 +155,7 @@ fun LibraryScreen(
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
             if (!isSelectionMode) {
+                // Search bar
                 AnimatedVisibility(
                     visible = searchExpanded,
                     enter = fadeIn(),
@@ -180,18 +183,30 @@ fun LibraryScreen(
                     ) { }
                 }
 
-                CollectionFilterRow(
-                    collections = collections,
-                    selectedCollectionId = uiState.selectedCollectionId,
-                    onSelected = viewModel::onCollectionFilterChanged,
-                )
-
-                StatusFilterRow(
-                    selected = uiState.selectedStatus,
-                    onSelected = viewModel::onStatusFilterChanged,
-                )
+                // Filter chips (collapsible)
+                AnimatedVisibility(
+                    visible = showFilters,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut(),
+                ) {
+                    Column {
+                        CollectionFilterRow(
+                            collections = collections,
+                            selectedCollectionId = uiState.selectedCollectionId,
+                            onSelected = viewModel::onCollectionFilterChanged,
+                        )
+                        StatusFilterRow(
+                            selected = uiState.selectedStatus,
+                            onSelected = {
+                                viewModel.onStatusFilterChanged(it)
+                                // Keep filters open so user can chain selections
+                            },
+                        )
+                    }
+                }
             }
 
+            // Content
             if (uiState.isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
@@ -245,7 +260,7 @@ fun LibraryScreen(
         }
     }
 
-    // Bulk status change dialog
+    // Dialogs
     if (showBulkStatusDialog) {
         BulkStatusDialog(
             selectedCount = selectedCount,
@@ -257,8 +272,6 @@ fun LibraryScreen(
             },
         )
     }
-
-    // Bulk collection picker dialog
     if (showBulkCollectionDialog) {
         BulkCollectionDialog(
             collections = collections,
@@ -271,15 +284,11 @@ fun LibraryScreen(
             },
         )
     }
-
-    // Bulk delete confirmation dialog
     if (showBulkDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showBulkDeleteDialog = false },
             title = { Text("Delete ${selectedCount} games?") },
-            text = {
-                Text("This cannot be undone.")
-            },
+            text = { Text("This cannot be undone.") },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -300,6 +309,8 @@ fun LibraryScreen(
     }
 }
 
+// ── Selection UI ──────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectionTopAppBar(
@@ -307,9 +318,7 @@ private fun SelectionTopAppBar(
     onClearSelection: () -> Unit,
 ) {
     TopAppBar(
-        title = {
-            Text("$selectedCount selected")
-        },
+        title = { Text("$selectedCount selected") },
         navigationIcon = {
             IconButton(onClick = onClearSelection) {
                 Icon(Icons.Default.Close, contentDescription = "Clear selection")
@@ -333,9 +342,7 @@ private fun SelectionBottomBar(
                 .padding(horizontal = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            Button(onClick = onStatusChange) {
-                Text("Status")
-            }
+            Button(onClick = onStatusChange) { Text("Status") }
             Button(onClick = onAddToCollection) {
                 Icon(Icons.Default.CollectionsBookmark, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(4.dp))
@@ -355,6 +362,8 @@ private fun SelectionBottomBar(
     }
 }
 
+// ── Dialogs ───────────────────────────────────────────────
+
 @Composable
 private fun BulkStatusDialog(
     selectedCount: Int,
@@ -371,18 +380,13 @@ private fun BulkStatusDialog(
                         onClick = { onStatusSelected(status) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(
-                            status.displayName,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+                        Text(status.displayName, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }
@@ -411,22 +415,19 @@ private fun BulkCollectionDialog(
                             onClick = { onCollectionSelected(collection.id) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(
-                                collection.name,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            Text(collection.name, modifier = Modifier.fillMaxWidth())
                         }
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         },
     )
 }
+
+// ── Sort ──────────────────────────────────────────────────
 
 @Composable
 private fun SortDropdownMenu(
@@ -435,10 +436,7 @@ private fun SortDropdownMenu(
     currentSort: SortOrder,
     onSortSelected: (SortOrder) -> Unit,
 ) {
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-    ) {
+    DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
         SortOrder.entries.forEach { order ->
             DropdownMenuItem(
                 text = { Text(order.displayName) },
@@ -457,22 +455,7 @@ private fun SortDropdownMenu(
     }
 }
 
-@Composable
-private fun FilterDropdownMenu(
-    expanded: Boolean,
-    onDismiss: () -> Unit,
-) {
-    DropdownMenu(
-        expanded = expanded,
-        onDismissRequest = onDismiss,
-    ) {
-        DropdownMenuItem(
-            text = { Text("Filter options coming soon") },
-            onClick = onDismiss,
-            enabled = false,
-        )
-    }
-}
+// ── Filter rows ───────────────────────────────────────────
 
 @Composable
 private fun CollectionFilterRow(
@@ -501,10 +484,7 @@ private fun CollectionFilterRow(
                     onSelected(if (selectedCollectionId == collection.id) null else collection.id)
                 },
                 label = {
-                    Text(
-                        collection.name,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
+                    Text(collection.name, style = MaterialTheme.typography.labelSmall)
                 },
             )
         }
@@ -516,7 +496,6 @@ private fun StatusFilterRow(
     selected: GameStatusFilter,
     onSelected: (GameStatusFilter) -> Unit,
 ) {
-    val filters = GameStatusFilter.entries
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -524,7 +503,7 @@ private fun StatusFilterRow(
             .padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        filters.forEach { filter ->
+        GameStatusFilter.entries.forEach { filter ->
             FilterChip(
                 selected = filter == selected,
                 onClick = { onSelected(filter) },
@@ -546,6 +525,8 @@ private fun StatusFilterRow(
         }
     }
 }
+
+// ── Empty state ───────────────────────────────────────────
 
 @Composable
 private fun EmptyLibrary(

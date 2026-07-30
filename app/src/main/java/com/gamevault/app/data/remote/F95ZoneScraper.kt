@@ -14,6 +14,14 @@ import org.jsoup.nodes.Document
  */
 class F95ZoneScraper {
 
+    companion object {
+        // Realistic Android Chrome UA to avoid blocks
+        private const val USER_AGENT =
+            "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 " +
+            "(KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
+        private const val TIMEOUT_MS = 30_000L
+    }
+
     /**
      * Scrape a game info page by URL.
      * @param url Full URL to an F95Zone game thread (e.g. https://f95zone.to/threads/...)
@@ -41,7 +49,8 @@ class F95ZoneScraper {
                 threadId = threadId,
             )
         } catch (e: Exception) {
-            ScrapeResult.Error("Failed to scrape: ${e.message}")
+            val msg = e.message ?: e.javaClass.simpleName
+            ScrapeResult.Error("Failed to scrape: $msg")
         }
     }
 
@@ -52,7 +61,9 @@ class F95ZoneScraper {
     suspend fun search(query: String, cookie: String? = null): List<SearchResult> {
         return try {
             val searchUrl = "https://f95zone.to/search"
-            val doc = fetchDocument("$searchUrl?q=${java.net.URLEncoder.encode(query, "UTF-8")}", cookie)
+            val doc = fetchDocument(
+                "$searchUrl?q=${java.net.URLEncoder.encode(query, "UTF-8")}", cookie,
+            )
 
             doc.select("article[data-author]").mapNotNull { article ->
                 val titleEl = article.selectFirst("h3.title a")
@@ -76,7 +87,7 @@ class F95ZoneScraper {
     private suspend fun fetchDocument(url: String, cookie: String?): Document {
         val conn = Jsoup.connect(url)
             .userAgent(USER_AGENT)
-            .timeout(15_000)
+            .timeout(TIMEOUT_MS.toInt())
             .followRedirects(true)
 
         if (cookie != null) {
@@ -87,74 +98,81 @@ class F95ZoneScraper {
     }
 
     private fun extractTitle(doc: Document): String? {
-        // F95Zone thread title is typically in the <title> tag or h1
         return doc.selectFirst("h1.p-title-value")?.text()
             ?: doc.title().removeSuffix(" | F95zone").trim()
     }
 
     private fun extractDescription(doc: Document): String? {
-        // First message content (the OP)
         return doc.selectFirst("article.message-body .bbWrapper")?.text()
             ?.take(1000)
     }
 
     private fun extractDeveloper(doc: Document): String? {
-        // Common patterns in F95 threads
-        val text = doc.selectFirst("article.message-body")?.text() ?: return null
+        // F95Zone often lists the OP author as the developer
+        return doc.selectFirst("article[data-author]")?.attr("data-author")
+    }
+
+    private fun extractEngine(doc: Document): GameEngine? {
+        val body = doc.selectFirst("article.message-body .bbWrapper")?.text() ?: return null
+
+        return when {
+            body.contains("Ren'Py", ignoreCase = true) ||
+                body.contains("renpy", ignoreCase = true) -> GameEngine.RENPY
+            body.contains("RPG Maker", ignoreCase = true) ||
+                body.contains("RPGM", ignoreCase = true) -> GameEngine.RPGM
+            body.contains("Unity", ignoreCase = true) -> GameEngine.UNITY
+            body.contains("Unreal", ignoreCase = true) ||
+                body.contains("UE4", ignoreCase = true) ||
+                body.contains("UE5", ignoreCase = true) -> GameEngine.UNREAL
+            body.contains("HTML", ignoreCase = true) -> GameEngine.HTML
+            body.contains("Flash", ignoreCase = true) -> GameEngine.FLASH
+            body.contains("Java", ignoreCase = true) -> GameEngine.JAVA
+            body.contains("Twine", ignoreCase = true) ||
+                body.contains("SugarCube", ignoreCase = true) -> GameEngine.TWINE
+            else -> GameEngine.OTHER
+        }
+    }
+
+    private fun extractVersion(doc: Document): String? {
+        val body = doc.selectFirst("article.message-body .bbWrapper")?.text() ?: return null
+
+        // Common patterns: "Version: 1.0", "v1.0.0", "Current version 0.5a"
         val patterns = listOf(
-            Regex("(?:Developer|Developer\\(s\\)|Author|Creator)[:\\s]+([^\\n,]+)", RegexOption.IGNORE_CASE),
-            Regex("by\\s+([A-Za-z0-9_\\s]+)", RegexOption.IGNORE_CASE),
+            Regex("""[Vv]ersion[:\s]*([\d.]+[a-zA-Z]*)"""),
+            Regex("""[Cc]urrent\s+version[:\s]*([\d.]+[a-zA-Z]*)"""),
+            Regex("""\b(v[\d]+\.[\d]+[\w.]*)\b"""),
         )
+
         for (pattern in patterns) {
-            val match = pattern.find(text)
+            val match = pattern.find(body)
             if (match != null) {
-                val dev = match.groupValues[1].trim()
-                if (dev.length in 2..50) return dev
+                return match.groupValues[1].trim()
             }
         }
         return null
     }
 
-    private fun extractEngine(doc: Document): GameEngine? {
-        val text = doc.selectFirst("article.message-body")?.text() ?: return null
-        return when {
-            text.contains("Ren'Py", ignoreCase = true) ||
-            text.contains("Renpy", ignoreCase = true) -> GameEngine.RENPY
-            text.contains("RPG Maker", ignoreCase = true) ||
-            text.contains("RPGM", ignoreCase = true) -> GameEngine.RPGM
-            text.contains("Unity", ignoreCase = true) -> GameEngine.UNITY
-            text.contains("Unreal", ignoreCase = true) ||
-            text.contains("UE4", ignoreCase = true) -> GameEngine.UNREAL
-            text.contains("HTML", ignoreCase = true) -> GameEngine.HTML
-            text.contains("Flash", ignoreCase = true) ||
-            text.contains("SWF", ignoreCase = true) -> GameEngine.FLASH
-            text.contains("Java", ignoreCase = true) -> GameEngine.JAVA
-            text.contains("Twine", ignoreCase = true) ||
-            text.contains("SugarCube", ignoreCase = true) -> GameEngine.TWINE
-            text.contains("RAGS", ignoreCase = true) ||
-            text.contains("TIC-80", ignoreCase = true) ||
-            text.contains("PICO-8", ignoreCase = true) -> GameEngine.OTHER
-            else -> GameEngine.UNKNOWN
-        }
-    }
-
-    private fun extractVersion(doc: Document): String? {
-        // Look for version patterns in the thread
-        val text = doc.selectFirst("article.message-body")?.text() ?: return null
-        val versionPattern = Regex("""(?:Version|v|Ver)[.:\s]*(\d+[\d.]*\d*)""", RegexOption.IGNORE_CASE)
-        return versionPattern.find(text)?.groupValues?.get(1)
-    }
-
     private fun extractCoverUrl(doc: Document): String? {
-        // Find the first attached image or cover image
-        val attachment = doc.selectFirst("a[href*=/attachments/] img")
-            ?: doc.selectFirst(".bbImage")
-        return attachment?.attr("src")?.let { normalizeUrl(it) }
-            ?: attachment?.attr("data-src")?.let { normalizeUrl(it) }
+        // Try multiple cover selectors
+        val selectors = listOf(
+            "meta[property=\"og:image\"]",
+            "article.message-body .bbWrapper img[src*=\"attachments\"]",
+            "a[href*=\"attachments\"] img",
+            ".message-content img[src*=\"f95zone\"]",
+        )
+
+        for (selector in selectors) {
+            val el = doc.selectFirst(selector) ?: continue
+            val url = when {
+                selector.startsWith("meta") -> el.attr("content")
+                else -> el.attr("src")
+            }
+            if (url.isNotBlank()) return normalizeUrl(url)
+        }
+        return null
     }
 
     private fun extractRating(doc: Document): Float? {
-        // F95Zone rating stars (if visible)
         val ratingEl = doc.selectFirst(".rating-stars") ?: return null
         val style = ratingEl.attr("style")
         val widthMatch = Regex("width\\s*:\\s*(\\d+(\\.\\d+)?)%").find(style)
@@ -174,10 +192,6 @@ class F95ZoneScraper {
             url.startsWith("/") -> "https://f95zone.to$url"
             else -> url
         }
-    }
-
-    companion object {
-        private const val USER_AGENT = "GameVault/0.1 (Android Game Manager; +https://github.com/gamevault)"
     }
 }
 

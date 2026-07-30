@@ -30,7 +30,8 @@ class F95ZoneSource(
                 )
             })
         } catch (e: Exception) {
-            SourceResult.Error("Search failed: ${e.message}", e)
+            val msg = e.message ?: e.javaClass.simpleName
+            SourceResult.Error("Search failed: $msg", e)
         }
     }
 
