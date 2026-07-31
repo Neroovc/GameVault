@@ -10,9 +10,12 @@ import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.local.GameVaultDatabase
 import com.gamevault.app.data.remote.F95ZoneScraper
 import com.gamevault.app.data.remote.F95ZoneSource
+import com.gamevault.app.data.remote.ItchScraper
+import com.gamevault.app.data.remote.ItchSource
 import com.gamevault.app.data.repository.GameRepositoryImpl
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.repository.GameRepository
+import com.gamevault.app.domain.source.SourceManager
 import com.gamevault.app.domain.source.SourceRegistry
 
 /**
@@ -63,13 +66,26 @@ class AppContainer(private val app: GameVaultApp) {
     }
 
     val f95ZoneSource: F95ZoneSource by lazy {
-        F95ZoneSource(f95ZoneScraper)
+        F95ZoneSource(f95ZoneScraper, appSettings)
+    }
+
+    val itchScraper: ItchScraper by lazy {
+        ItchScraper()
+    }
+
+    val itchSource: ItchSource by lazy {
+        ItchSource(itchScraper)
     }
 
     val sourceRegistry: SourceRegistry by lazy {
         SourceRegistry().apply {
             register(f95ZoneSource)
+            register(itchSource)
         }
+    }
+
+    val sourceManager: SourceManager by lazy {
+        SourceManager(sourceRegistry, appSettings)
     }
 
     val appSettings: AppSettings by lazy {

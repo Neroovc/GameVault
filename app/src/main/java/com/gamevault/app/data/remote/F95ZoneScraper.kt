@@ -214,11 +214,7 @@ class F95ZoneScraper {
 }
 
 // ── Result types ──────────────────────────────────────────
-
-sealed class ScrapeResult {
-    data class Success(val game: Game, val threadId: String?) : ScrapeResult()
-    data class Error(val message: String) : ScrapeResult()
-}
+// ScrapeResult moved to ScrapeResult.kt (shared with other scrapers).
 
 data class SearchResult(
     val title: String,

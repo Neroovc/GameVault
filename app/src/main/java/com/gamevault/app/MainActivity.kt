@@ -39,6 +39,8 @@ import com.gamevault.app.ui.addgame.AddGameScreen
 import com.gamevault.app.ui.addgame.AddGameViewModel
 import com.gamevault.app.ui.detail.GameDetailScreen
 import com.gamevault.app.ui.detail.GameDetailViewModel
+import com.gamevault.app.ui.extensions.ExtensionsScreen
+import com.gamevault.app.ui.extensions.SourceBrowseScreen
 import com.gamevault.app.ui.history.HistoryScreen
 import com.gamevault.app.ui.history.HistoryViewModel
 import com.gamevault.app.ui.library.LibraryScreen
@@ -105,6 +107,30 @@ private fun GameVaultNavHost(
                     rootNavController.navigate(NavRoutes.ADD_GAME)
                 },
                 onSettingsClick = { rootNavController.navigate(NavRoutes.SETTINGS) },
+                onExtensionsClick = { rootNavController.navigate(NavRoutes.EXTENSIONS) },
+            )
+        }
+
+        composable(NavRoutes.EXTENSIONS) {
+            ExtensionsScreen(
+                sourceManager = appContainer.sourceManager,
+                appSettings = appContainer.appSettings,
+                onSourceClick = { sourceId -> rootNavController.navigate(NavRoutes.sourceBrowse(sourceId)) },
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(
+            NavRoutes.SOURCE_BROWSE,
+            arguments = listOf(navArgument("sourceId") { type = NavType.StringType }),
+        ) { backStackEntry ->
+            val sourceId = backStackEntry.arguments?.getString("sourceId") ?: return@composable
+            SourceBrowseScreen(
+                sourceId = sourceId,
+                sourceManager = appContainer.sourceManager,
+                gameRepository = appContainer.gameRepository,
+                appSettings = appContainer.appSettings,
+                onNavigateBack = { rootNavController.popBackStack() },
             )
         }
 
@@ -182,6 +208,7 @@ private fun MainTabsScreen(
     onGameClick: (Long) -> Unit,
     onAddGame: () -> Unit,
     onSettingsClick: () -> Unit,
+    onExtensionsClick: () -> Unit,
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
 
@@ -254,6 +281,7 @@ private fun MainTabsScreen(
                 2 -> {
                     MoreScreen(
                         onSettingsClick = onSettingsClick,
+                        onExtensionsClick = onExtensionsClick,
                     )
                 }
             }

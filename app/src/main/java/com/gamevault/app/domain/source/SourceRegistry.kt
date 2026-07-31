@@ -10,15 +10,18 @@ class SourceRegistry {
 
     private val sources = mutableMapOf<String, GameSource>()
 
+    /** Register a source keyed by its stable [GameSource.id]. */
     fun register(source: GameSource) {
-        sources[source.name] = source
+        sources[source.id] = source
     }
 
-    fun unregister(name: String) {
-        sources.remove(name)
+    /** Unregister a source by its stable id. */
+    fun unregister(id: String) {
+        sources.remove(id)
     }
 
-    fun get(name: String): GameSource? = sources[name]
+    /** Look up a source by its stable id. */
+    fun get(id: String): GameSource? = sources[id]
 
     fun getAll(): List<GameSource> = sources.values.toList()
 }

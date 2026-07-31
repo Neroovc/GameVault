@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -44,6 +46,8 @@ class AppSettings(private val context: Context) {
         val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
         val GRID_MODE = intPreferencesKey("grid_mode")
         val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
+        val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
+        val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
     }
 
     /** Observe the current theme mode. Defaults to SYSTEM. */
@@ -102,6 +106,44 @@ class AppSettings(private val context: Context) {
     suspend fun setDefaultCollectionId(collectionId: Long?) {
         context.dataStore.edit { prefs ->
             prefs[Keys.DEFAULT_COLLECTION_ID] = collectionId ?: -1L
+        }
+    }
+
+    /**
+     * Observe the set of disabled extension source ids.
+     * Empty set means ALL sources are enabled.
+     */
+    val disabledSourceIds: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DISABLED_SOURCE_IDS] ?: emptySet()
+    }
+
+    /** Enable or disable an extension source by id. */
+    suspend fun setSourceEnabled(id: String, enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[Keys.DISABLED_SOURCE_IDS] ?: emptySet()
+            val updated = if (enabled) current - id else current + id
+            if (updated.isEmpty()) {
+                // DataStore throws on empty string sets — remove the key instead.
+                prefs.remove(Keys.DISABLED_SOURCE_IDS)
+            } else {
+                prefs[Keys.DISABLED_SOURCE_IDS] = updated
+            }
+        }
+    }
+
+    /** Observe the saved F95Zone session cookie. null = no cookie saved. */
+    val f95zoneCookie: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.F95ZONE_COOKIE]
+    }
+
+    /** Persist (or clear with null) the F95Zone session cookie. */
+    suspend fun setF95zoneCookie(cookie: String?) {
+        context.dataStore.edit { prefs ->
+            if (cookie == null) {
+                prefs.remove(Keys.F95ZONE_COOKIE)
+            } else {
+                prefs[Keys.F95ZONE_COOKIE] = cookie
+            }
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.gamevault.app.domain.source
 
+import androidx.annotation.DrawableRes
 import com.gamevault.app.domain.model.Game
 
 /**
@@ -28,8 +29,18 @@ data class SearchResult(
  * from a specific provider (F95Zone, Steam, VNDB, etc.).
  */
 interface GameSource {
+    /** Stable unique id for this source (e.g. "f95zone"). */
+    val id: String
+
     /** Human-readable name for this source (e.g. "F95Zone"). */
     val name: String
+
+    /** Launcher-style drawable icon for this source. */
+    @get:DrawableRes
+    val iconRes: Int
+
+    /** Short human description shown in the extensions list. */
+    val description: String
 
     /** Search the source for games matching [query]. */
     suspend fun search(query: String): SourceResult<List<SearchResult>>

@@ -1,11 +1,15 @@
 package com.gamevault.app.data.remote
 
+import androidx.annotation.DrawableRes
+import com.gamevault.app.R
 import com.gamevault.app.data.remote.ScrapeResult
+import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.source.GameSource
 import com.gamevault.app.domain.source.SearchResult
 import com.gamevault.app.domain.source.SourceResult
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameStatus
+import kotlinx.coroutines.flow.first
 
 /**
  * Adapts the existing [F95ZoneScraper] to the [GameSource] interface.
@@ -15,13 +19,22 @@ import com.gamevault.app.domain.model.GameStatus
  */
 class F95ZoneSource(
     private val scraper: F95ZoneScraper,
+    private val appSettings: AppSettings,
 ) : GameSource {
+
+    override val id: String = "f95zone"
 
     override val name: String = "F95Zone"
 
+    @get:DrawableRes
+    override val iconRes: Int = R.drawable.ic_source_f95zone
+
+    override val description: String = "Adult games forum with the largest game catalogue"
+
     override suspend fun search(query: String): SourceResult<List<SearchResult>> {
         return try {
-            val results = scraper.search(query)
+            val cookie = appSettings.f95zoneCookie.first()
+            val results = scraper.search(query, cookie)
             SourceResult.Success(results.map { sr ->
                 SearchResult(
                     title = sr.title,
@@ -37,7 +50,8 @@ class F95ZoneSource(
 
     override suspend fun fetchDetail(url: String): SourceResult<Game> {
         return try {
-            when (val result = scraper.scrapeGame(url)) {
+            val cookie = appSettings.f95zoneCookie.first()
+            when (val result = scraper.scrapeGame(url, cookie)) {
                 is ScrapeResult.Success -> {
                     // The scraper already populates a Game object from HTML.
                     // Override the status to NEW since it's being imported.
