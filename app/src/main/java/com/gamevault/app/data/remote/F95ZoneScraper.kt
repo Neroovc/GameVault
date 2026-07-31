@@ -153,52 +153,42 @@ class F95ZoneScraper {
     }
 
     private fun extractCoverUrl(doc: Document): String? {
-        // F95Zone attachment images are served at URLs like
-        //   attachments/thumb-filename-jpg.12345/  (RELATIVE, no leading slash)
-        // The thumb- variant is a small thumbnail; the anchor href points to the
-        // FULL-SIZE attachment. We prefer the full-size one, and fall back to the
-        // thumbnail when no anchor exists.
+        // F95Zone now serves attachments from a CDN (attachments.f95zone.to).
+        // Thumbnails live under a `/thumb/` path segment; the full-size image
+        // is the same URL with that segment removed:
+        //   https://attachments.f95zone.to/2019/02/thumb/255625_A_Good_time.jpg  (thumb)
+        //   https://attachments.f95zone.to/2019/02/255625_A_Good_time.jpg        (full)
         //
-        // Priority: post body full-size → post body thumbnail → any attachment → meta tags.
-
-        // 1) Full-size: anchor href wrapping the first post image.
-        //    Only trust anchors whose filename carries an image extension
-        //    (avoids download links for zips/exes inside the post body).
-        val imageHref = Regex("""\.(jpg|jpeg|png|gif|webp)\.\d+/?$""", RegexOption.IGNORE_CASE)
-        val attachmentLink = doc.selectFirst(
-            "article.message-body .bbWrapper a[href*=\"attachments\"]"
-        )
-        if (attachmentLink != null) {
-            val href = attachmentLink.attr("href")
-            if (href.isNotBlank() && imageHref.containsMatchIn(href)) {
-                return normalizeUrl(href)
-            }
-        }
+        // Priority: post body image → wrapped image → any attachment image → meta tags.
+        // We always strip `/thumb/` to prefer the full-size image.
 
         val selectors = listOf(
-            // 2) First attachment image in the OP's post body
+            // 1) First attachment image in the OP's post body
             "article.message-body .bbWrapper img[src*=\"attachments\"]",
-            // 3) Any attachment image wrapped in a link
+            // 2) Any attachment image wrapped in a link
             "a[href*=\"attachments\"] img[src*=\"attachments\"]",
-            // 4) Any remaining attachment image
+            // 3) Any remaining attachment image
             "img[src*=\"attachments\"]",
         )
 
         for (selector in selectors) {
             val el = doc.selectFirst(selector) ?: continue
             val src = el.attr("src")
-            if (src.isNotBlank()) return normalizeUrl(src)
+            if (src.isNotBlank()) return normalizeUrl(stripThumbPath(src))
         }
 
         // Last resort: meta tags (og:image, twitter:image)
         for (metaSel in listOf("meta[property=\"og:image\"]", "meta[property=\"twitter:image\"]")) {
             val meta = doc.selectFirst(metaSel) ?: continue
             val content = meta.attr("content")
-            if (content.isNotBlank()) return normalizeUrl(content)
+            if (content.isNotBlank()) return normalizeUrl(stripThumbPath(content))
         }
 
         return null
     }
+
+    /** Removes the `/thumb/` path segment to upgrade a CDN thumbnail to the full-size URL. */
+    private fun stripThumbPath(url: String): String = url.replace("/thumb/", "/")
 
     private fun extractRating(doc: Document): Float? {
         val ratingEl = doc.selectFirst(".rating-stars") ?: return null

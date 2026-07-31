@@ -73,9 +73,10 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
 
-    // Coil (images + GIF support)
+    // Coil (images + GIF + AVIF support)
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-gif:2.7.0")
+    implementation("io.coil-kt:coil-avif:2.7.0")
 
     // JSoup (scraping F95Zone)
     implementation("org.jsoup:jsoup:1.18.3")

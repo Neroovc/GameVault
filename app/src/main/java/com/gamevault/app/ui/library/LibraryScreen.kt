@@ -1,8 +1,5 @@
 package com.gamevault.app.ui.library
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +19,10 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -46,15 +46,15 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SearchBar
-import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -63,8 +63,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -88,6 +92,11 @@ fun LibraryScreen(
     val isSelectionMode by selectionViewModel.isSelectionMode.collectAsState()
     val selectedCount by selectionViewModel.selectedCount.collectAsState()
     var searchExpanded by remember { mutableStateOf(false) }
+    val focusRequester = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(searchExpanded) {
+        if (searchExpanded) focusRequester.requestFocus()
+    }
     var showSheet by remember { mutableStateOf(false) }
     var showBulkStatusDialog by remember { mutableStateOf(false) }
     var showBulkCollectionDialog by remember { mutableStateOf(false) }
@@ -112,19 +121,64 @@ fun LibraryScreen(
                 )
             } else {
                 TopAppBar(
-                    title = { Text("GameVault") },
-                    scrollBehavior = scrollBehavior,
-                    actions = {
-                        IconButton(onClick = { searchExpanded = !searchExpanded }) {
-                            Icon(Icons.Default.Search, contentDescription = "Search")
-                        }
-                        IconButton(onClick = { showSheet = true }) {
-                            Icon(
-                                Icons.Default.FilterList,
-                                contentDescription = "Filter & Sort",
-                                tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurface,
+                    title = {
+                        if (searchExpanded) {
+                            TextField(
+                                value = uiState.searchQuery,
+                                onValueChange = viewModel::onSearchQueryChanged,
+                                singleLine = true,
+                                placeholder = { Text("Search library") },
+                                trailingIcon = {
+                                    if (uiState.searchQuery.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { viewModel.onSearchQueryChanged("") },
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Clear search",
+                                            )
+                                        }
+                                    }
+                                },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(
+                                    onSearch = { focusManager.clearFocus() },
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(focusRequester),
                             )
+                        } else {
+                            Text("GameVault")
+                        }
+                    },
+                    scrollBehavior = scrollBehavior,
+                    navigationIcon = {
+                        if (searchExpanded) {
+                            IconButton(onClick = {
+                                searchExpanded = false
+                                viewModel.onSearchQueryChanged("")
+                            }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "Back",
+                                )
+                            }
+                        }
+                    },
+                    actions = {
+                        if (!searchExpanded) {
+                            IconButton(onClick = { searchExpanded = !searchExpanded }) {
+                                Icon(Icons.Default.Search, contentDescription = "Search")
+                            }
+                            IconButton(onClick = { showSheet = true }) {
+                                Icon(
+                                    Icons.Default.FilterList,
+                                    contentDescription = "Filter & Sort",
+                                    tint = if (hasActiveFilters) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
                         }
                     },
                 )
@@ -148,36 +202,6 @@ fun LibraryScreen(
         },
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            if (!isSelectionMode) {
-                // Search bar
-                AnimatedVisibility(
-                    visible = searchExpanded,
-                    enter = fadeIn(),
-                    exit = fadeOut(),
-                ) {
-                    SearchBar(
-                        inputField = {
-                            SearchBarDefaults.InputField(
-                                query = uiState.searchQuery,
-                                onQueryChange = viewModel::onSearchQueryChanged,
-                                onSearch = { },
-                                expanded = false,
-                                onExpandedChange = { },
-                                placeholder = { Text("Search games...") },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Search, contentDescription = null)
-                                },
-                            )
-                        },
-                        expanded = false,
-                        onExpandedChange = { },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                    ) { }
-                }
-            }
-
             // Collection chips row (always visible above the grid)
             if (collections.isNotEmpty()) {
                 CollectionChipsRow(

@@ -18,18 +18,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoStories
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Coffee
-import androidx.compose.material.icons.filled.Flight
-import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.QuestionMark
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,7 +35,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -342,17 +333,22 @@ private fun ListContent(
     }
 }
 
-private fun engineIcon(engine: GameEngine): ImageVector = when (engine) {
-    GameEngine.RENPY -> Icons.Filled.AutoStories
-    GameEngine.RPGM -> Icons.Filled.Map
-    GameEngine.UNITY -> Icons.Filled.ViewInAr
-    GameEngine.UNREAL -> Icons.Filled.Flight
-    GameEngine.HTML -> Icons.Filled.Code
-    GameEngine.FLASH -> Icons.Filled.Bolt
-    GameEngine.JAVA -> Icons.Filled.Coffee
-    GameEngine.TWINE -> Icons.Filled.Link
-    GameEngine.OTHER -> Icons.Filled.QuestionMark
-    GameEngine.UNKNOWN -> Icons.Filled.QuestionMark
+/**
+ * Brand icon for a known engine (Ren'Py, RPG Maker, Unity, ...).
+ * Returns null for engines without a dedicated drawable, so the caller can
+ * fall back to a generic Material icon.
+ */
+@Composable
+private fun enginePainter(engine: GameEngine): Painter? = when (engine) {
+    GameEngine.RENPY -> painterResource(R.drawable.ic_engine_renpy)
+    GameEngine.RPGM -> painterResource(R.drawable.ic_engine_rpgm)
+    GameEngine.UNITY -> painterResource(R.drawable.ic_engine_unity)
+    GameEngine.UNREAL -> painterResource(R.drawable.ic_engine_unreal)
+    GameEngine.FLASH -> painterResource(R.drawable.ic_engine_flash)
+    GameEngine.JAVA -> painterResource(R.drawable.ic_engine_java)
+    GameEngine.TWINE -> painterResource(R.drawable.ic_engine_twine)
+    GameEngine.HTML -> painterResource(R.drawable.ic_engine_html)
+    GameEngine.OTHER, GameEngine.UNKNOWN -> null
 }
 
 @Composable
@@ -386,12 +382,23 @@ private fun EngineSourceBadge(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             if (showEngine) {
-                Icon(
-                    imageVector = engineIcon(engine),
-                    contentDescription = engine.displayName,
-                    modifier = Modifier.size(12.dp),
-                    tint = MaterialTheme.colorScheme.primary,
-                )
+                val painter = enginePainter(engine)
+                if (painter != null) {
+                    Icon(
+                        painter = painter,
+                        contentDescription = engine.displayName,
+                        modifier = Modifier.size(12.dp),
+                        // Brand vectors carry their own colors — no tint.
+                        tint = Color.Unspecified,
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.QuestionMark,
+                        contentDescription = engine.displayName,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     text = engine.displayName,
                     style = MaterialTheme.typography.labelSmall,
@@ -407,6 +414,8 @@ private fun EngineSourceBadge(
                         painter = painter,
                         contentDescription = sourceType.displayName,
                         modifier = Modifier.size(12.dp),
+                        // Brand vectors carry their own colors — no tint.
+                        tint = Color.Unspecified,
                     )
                 } else {
                     Text(
