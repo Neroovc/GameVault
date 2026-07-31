@@ -29,6 +29,7 @@ class AppSettings(private val context: Context) {
     private object Keys {
         val THEME_MODE = intPreferencesKey("theme_mode")
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
+        val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
     }
 
     /** Observe the current theme mode. Defaults to SYSTEM. */
@@ -52,6 +53,18 @@ class AppSettings(private val context: Context) {
     suspend fun setAmoledDark(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.AMOLED_DARK] = enabled
+        }
+    }
+
+    /** Observe the GIF autoplay setting. Defaults to true. */
+    val gifAutoplay: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.GIF_AUTOPLAY] ?: true
+    }
+
+    /** Persist the GIF autoplay setting. */
+    suspend fun setGifAutoplay(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.GIF_AUTOPLAY] = enabled
         }
     }
 }

@@ -1,6 +1,11 @@
 package com.gamevault.app
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.local.GameVaultDatabase
 import com.gamevault.app.data.remote.F95ZoneScraper
@@ -14,7 +19,7 @@ import com.gamevault.app.domain.source.SourceRegistry
  * Application class — holds the DI container.
  * No Hilt/Koin, just clean manual dependency injection.
  */
-class GameVaultApp : Application() {
+class GameVaultApp : Application(), ImageLoaderFactory {
 
     lateinit var appContainer: AppContainer
         private set
@@ -22,6 +27,23 @@ class GameVaultApp : Application() {
     override fun onCreate() {
         super.onCreate()
         appContainer = AppContainer(this)
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .components { add(GifDecoder.Factory()) }
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("coil_cache"))
+                    .maxSizeBytes(50 * 1024 * 1024) // 50MB
+                    .build()
+            }
+            .build()
     }
 }
 

@@ -107,8 +107,10 @@ fun SettingsScreen(
                 ThemeSection(
                     currentTheme = state.themeMode,
                     amoledDark = state.amoledDark,
+                    gifAutoplay = state.gifAutoplay,
                     onThemeSelected = viewModel::setThemeMode,
                     onAmoledToggle = viewModel::setAmoledDark,
+                    onGifAutoplayToggle = viewModel::setGifAutoplay,
                 )
             }
 
@@ -155,8 +157,10 @@ fun SettingsScreen(
 private fun ThemeSection(
     currentTheme: ThemeMode,
     amoledDark: Boolean,
+    gifAutoplay: Boolean,
     onThemeSelected: (ThemeMode) -> Unit,
     onAmoledToggle: (Boolean) -> Unit,
+    onGifAutoplayToggle: (Boolean) -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -217,6 +221,34 @@ private fun ThemeSection(
                 Switch(
                     checked = amoledDark,
                     onCheckedChange = onAmoledToggle,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "GIF Autoplay",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = "Automatically play animated cover images",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                    )
+                }
+                Switch(
+                    checked = gifAutoplay,
+                    onCheckedChange = onGifAutoplayToggle,
                 )
             }
         }

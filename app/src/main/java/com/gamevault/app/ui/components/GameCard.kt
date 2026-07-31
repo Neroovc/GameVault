@@ -48,6 +48,7 @@ fun GameCard(
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onLongClick: () -> Unit = {},
+    isCompact: Boolean = false,
 ) {
     Card(
         modifier = modifier
@@ -122,6 +123,25 @@ fun GameCard(
                         .padding(6.dp),
                 )
 
+                // Compact overlay title (bottom-center)
+                if (isCompact) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.BottomCenter)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    ) {
+                        Text(
+                            text = game.title,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+
                 // Rating pill (bottom-right of cover)
                 if (game.personalRating != null) {
                     RatingPill(
@@ -133,35 +153,37 @@ fun GameCard(
                 }
             }
 
-            // ── Info ───────────────────────────────────────────
-            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                Text(
-                    text = game.title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-
-                if (game.developer != null) {
-                    Spacer(modifier = Modifier.height(2.dp))
+            // ── Info section (non-compact only) ─────────────────
+            if (!isCompact) {
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                     Text(
-                        text = game.developer,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        text = game.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
-                }
 
-                if (game.engine != null) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = game.engine.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        maxLines = 1,
-                    )
+                    if (game.developer != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = game.developer,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+
+                    if (game.engine != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = game.engine.displayName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            maxLines = 1,
+                        )
+                    }
                 }
             }
         }

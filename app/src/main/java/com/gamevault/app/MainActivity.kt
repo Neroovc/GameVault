@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -38,8 +37,6 @@ import androidx.navigation.navArgument
 import com.gamevault.app.data.settings.ThemeMode
 import com.gamevault.app.ui.addgame.AddGameScreen
 import com.gamevault.app.ui.addgame.AddGameViewModel
-import com.gamevault.app.ui.collections.CollectionsScreen
-import com.gamevault.app.ui.collections.CollectionsViewModel
 import com.gamevault.app.ui.detail.GameDetailScreen
 import com.gamevault.app.ui.detail.GameDetailViewModel
 import com.gamevault.app.ui.history.HistoryScreen
@@ -58,7 +55,6 @@ private data class TabItem(
 
 private val tabs = listOf(
     TabItem("Library", Icons.Default.CollectionsBookmark),
-    TabItem("Collections", Icons.Default.Folder),
     TabItem("History", Icons.Default.History),
     TabItem("Settings", Icons.Default.Settings),
 )
@@ -106,9 +102,6 @@ private fun GameVaultNavHost(
                 },
                 onAddGame = {
                     rootNavController.navigate(NavRoutes.ADD_GAME)
-                },
-                onCollectionClick = { collectionId ->
-                    rootNavController.navigate(NavRoutes.collectionGames(collectionId))
                 },
             )
         }
@@ -172,7 +165,6 @@ private fun MainTabsScreen(
     appContainer: AppContainer,
     onGameClick: (Long) -> Unit,
     onAddGame: () -> Unit,
-    onCollectionClick: (Long) -> Unit,
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
 
@@ -239,25 +231,6 @@ private fun MainTabsScreen(
                     val navController = rememberNavController()
                     NavHost(
                         navController = navController,
-                        startDestination = "collections_tab",
-                    ) {
-                        composable("collections_tab") {
-                            val viewModel: CollectionsViewModel = viewModel(
-                                factory = CollectionsViewModel.Factory(appContainer.gameRepository),
-                            )
-                            CollectionsScreen(
-                                viewModel = viewModel,
-                                onCollectionClick = onCollectionClick,
-                                showBackButton = false,
-                            )
-                        }
-                    }
-                }
-
-                2 -> {
-                    val navController = rememberNavController()
-                    NavHost(
-                        navController = navController,
                         startDestination = "history_tab",
                     ) {
                         composable("history_tab") {
@@ -269,7 +242,7 @@ private fun MainTabsScreen(
                     }
                 }
 
-                3 -> {
+                2 -> {
                     val navController = rememberNavController()
                     NavHost(
                         navController = navController,

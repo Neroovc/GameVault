@@ -34,6 +34,7 @@ data class BackupUiState(
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val amoledDark: Boolean = false,
+    val gifAutoplay: Boolean = true,
     val collections: List<CollectionWithCount> = emptyList(),
     val showCreateDialog: Boolean = false,
     val showRenameDialog: Boolean = false,
@@ -71,6 +72,7 @@ class SettingsViewModel(
     val uiState: StateFlow<SettingsUiState> = combine(
         appSettings.themeMode,
         appSettings.amoledDark,
+        appSettings.gifAutoplay,
         collectionsWithCount,
         _showCreateDialog,
         _showRenameDialog,
@@ -82,12 +84,13 @@ class SettingsViewModel(
         SettingsUiState(
             themeMode = array[0] as ThemeMode,
             amoledDark = array[1] as Boolean,
-            collections = array[2] as List<CollectionWithCount>,
-            showCreateDialog = array[3] as Boolean,
-            showRenameDialog = array[4] as Boolean,
-            renameTarget = array[5] as Collection?,
-            newCollectionName = array[6] as String,
-            backupUi = array[7] as BackupUiState,
+            gifAutoplay = array[2] as Boolean,
+            collections = array[3] as List<CollectionWithCount>,
+            showCreateDialog = array[4] as Boolean,
+            showRenameDialog = array[5] as Boolean,
+            renameTarget = array[6] as Collection?,
+            newCollectionName = array[7] as String,
+            backupUi = array[8] as BackupUiState,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -104,6 +107,12 @@ class SettingsViewModel(
     fun setAmoledDark(enabled: Boolean) {
         viewModelScope.launch {
             appSettings.setAmoledDark(enabled)
+        }
+    }
+
+    fun setGifAutoplay(enabled: Boolean) {
+        viewModelScope.launch {
+            appSettings.setGifAutoplay(enabled)
         }
     }
 

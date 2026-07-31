@@ -48,6 +48,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -177,6 +178,16 @@ fun LibraryScreen(
                 }
             }
 
+            // Collection chips row (always visible above the grid)
+            if (collections.isNotEmpty()) {
+                CollectionChipsRow(
+                    collections = collections,
+                    selectedId = uiState.selectedCollectionId,
+                    onSelected = viewModel::onCollectionFilterChanged,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
+
             // Content
             if (uiState.isLoading) {
                 Box(
@@ -223,6 +234,7 @@ fun LibraryScreen(
                                         GameCard(
                                             game = item.game,
                                             isSelected = item.game.id in selectedIds,
+                                            isCompact = uiState.isCompactGrid,
                                             onClick = {
                                                 if (isSelectionMode) {
                                                     selectionViewModel.toggleSelection(item.game.id)
@@ -254,6 +266,7 @@ fun LibraryScreen(
             onCollectionChanged = viewModel::onCollectionFilterChanged,
             onSortChanged = viewModel::onSortOrderChanged,
             onGroupChanged = viewModel::onGroupByChanged,
+            onCompactChanged = viewModel::onCompactGridChanged,
         )
     }
 
@@ -314,6 +327,7 @@ private fun FilterSortSheet(
     onCollectionChanged: (Long?) -> Unit,
     onSortChanged: (SortOrder) -> Unit,
     onGroupChanged: (GroupBy) -> Unit,
+    onCompactChanged: (Boolean) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -365,6 +379,21 @@ private fun FilterSortSheet(
                 current = uiState.groupBy,
                 onSelected = onGroupChanged,
             )
+
+            HorizontalDivider()
+
+            // ── Section: Appearance ────────────────────────────
+            SectionLabel("Appearance")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Compact grid", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = uiState.isCompactGrid,
+                    onCheckedChange = { onCompactChanged(it) },
+                )
+            }
         }
     }
 }
@@ -422,9 +451,10 @@ private fun CollectionChipsRow(
     collections: List<Collection>,
     selectedId: Long?,
     onSelected: (Long?) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),

@@ -26,6 +26,7 @@ data class LibraryUiState(
     val sortOrder: SortOrder = SortOrder.DATE_ADDED_DESC,
     val selectedCollectionId: Long? = null,
     val groupBy: GroupBy = GroupBy.NONE,
+    val isCompactGrid: Boolean = false,
 )
 
 enum class GameStatusFilter {
@@ -81,7 +82,8 @@ class LibraryViewModel(
     val selectedCollectionId: StateFlow<Long?> = _selectedCollectionId.asStateFlow()
 
     private val _groupBy = MutableStateFlow(GroupBy.NONE)
-    val groupBy: StateFlow<GroupBy> = _groupBy.asStateFlow()
+    private val _isCompactGrid = MutableStateFlow(false)
+    val isCompactGrid: StateFlow<Boolean> = _isCompactGrid.asStateFlow()
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -100,9 +102,10 @@ class LibraryViewModel(
         _sortOrder,
         _selectedCollectionId,
         _groupBy,
-    ) { query, status, sort, collectionId, group ->
-        FilterParams(query, status, sort, collectionId) to group
-    }.flatMapLatest { (params, group) ->
+        _isCompactGrid,
+    ) { query, status, sort, collectionId, group, isCompact ->
+        Triple(FilterParams(query, status, sort, collectionId), group, isCompact)
+    }.flatMapLatest { (params, group, isCompact) ->
         val source: Flow<List<Game>> = when {
             params.query.isNotBlank() -> repository.searchGames(params.query)
             params.collectionId != null -> repository.observeGamesInCollection(params.collectionId)
@@ -112,16 +115,18 @@ class LibraryViewModel(
             )
         }
         source.map { games -> sortGames(games, params.sort) }
-    }.map { sortedGames ->
-        LibraryUiState(
-            games = sortedGames,
-            searchQuery = _searchQuery.value,
-            isLoading = false,
-            selectedStatus = _selectedStatus.value,
-            sortOrder = _sortOrder.value,
-            selectedCollectionId = _selectedCollectionId.value,
-            groupBy = _groupBy.value,
-        )
+            .map { sortedGames ->
+                LibraryUiState(
+                    games = sortedGames,
+                    searchQuery = _searchQuery.value,
+                    isLoading = false,
+                    selectedStatus = _selectedStatus.value,
+                    sortOrder = _sortOrder.value,
+                    selectedCollectionId = _selectedCollectionId.value,
+                    groupBy = _groupBy.value,
+                    isCompactGrid = isCompact,
+                )
+            }
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -139,6 +144,8 @@ class LibraryViewModel(
     }
 
     fun onGroupByChanged(group: GroupBy) { _groupBy.value = group }
+
+    fun onCompactGridChanged(compact: Boolean) { _isCompactGrid.value = compact }
 
     fun deleteGame(gameId: Long) {
         viewModelScope.launch { repository.deleteGame(gameId) }
