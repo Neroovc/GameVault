@@ -3,7 +3,6 @@ package com.gamevault.app
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
-import coil.decode.AvifDecoder
 import coil.decode.GifDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
@@ -34,7 +33,6 @@ class GameVaultApp : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .components {
                 add(GifDecoder.Factory())
-                add(AvifDecoder.Factory())
             }
             .memoryCache {
                 MemoryCache.Builder(this)
