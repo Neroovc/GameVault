@@ -154,19 +154,33 @@ class F95ZoneScraper {
 
     private fun extractCoverUrl(doc: Document): String? {
         // F95Zone attachment images are served at URLs like
-        //   attachments/thumb-filename-jpg.12345/
-        // (RELATIVE, no leading slash) which redirect to actual thumbnail images.
-        // The variant WITHOUT "thumb-" serves an HTML lightbox page, NOT a raw
-        // image, so we must keep thumb-.
+        //   attachments/thumb-filename-jpg.12345/  (RELATIVE, no leading slash)
+        // The thumb- variant is a small thumbnail; the anchor href points to the
+        // FULL-SIZE attachment. We prefer the full-size one, and fall back to the
+        // thumbnail when no anchor exists.
         //
-        // Priority: post body image → any attachment image → meta tags.
+        // Priority: post body full-size → post body thumbnail → any attachment → meta tags.
+
+        // 1) Full-size: anchor href wrapping the first post image.
+        //    Only trust anchors whose filename carries an image extension
+        //    (avoids download links for zips/exes inside the post body).
+        val imageHref = Regex("""\.(jpg|jpeg|png|gif|webp)\.\d+/?$""", RegexOption.IGNORE_CASE)
+        val attachmentLink = doc.selectFirst(
+            "article.message-body .bbWrapper a[href*=\"attachments\"]"
+        )
+        if (attachmentLink != null) {
+            val href = attachmentLink.attr("href")
+            if (href.isNotBlank() && imageHref.containsMatchIn(href)) {
+                return normalizeUrl(href)
+            }
+        }
 
         val selectors = listOf(
-            // 1) First attachment image in the OP's post body
+            // 2) First attachment image in the OP's post body
             "article.message-body .bbWrapper img[src*=\"attachments\"]",
-            // 2) Any attachment image wrapped in a link
+            // 3) Any attachment image wrapped in a link
             "a[href*=\"attachments\"] img[src*=\"attachments\"]",
-            // 3) Any remaining attachment image
+            // 4) Any remaining attachment image
             "img[src*=\"attachments\"]",
         )
 

@@ -77,9 +77,11 @@ fun GameCard(
                 onLongClick = onLongClick,
             ),
         shape = cardShape,
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            // Transparent card — the image is the card (Mihon style, no gray box
+            // behind the title in comfortable/list modes).
+            containerColor = Color.Transparent,
         ),
     ) {
         if (gridMode == GridMode.LIST) {
@@ -374,7 +376,8 @@ private fun EngineSourceBadge(
         modifier = modifier,
         shape = RoundedCornerShape(4.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+            // Transparent — icon + text float directly over the cover (Mihon/Komikku style)
+            containerColor = Color.Transparent,
         ),
     ) {
         Row(

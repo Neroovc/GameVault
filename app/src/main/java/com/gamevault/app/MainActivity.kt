@@ -10,7 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -43,6 +43,7 @@ import com.gamevault.app.ui.history.HistoryScreen
 import com.gamevault.app.ui.history.HistoryViewModel
 import com.gamevault.app.ui.library.LibraryScreen
 import com.gamevault.app.ui.library.LibraryViewModel
+import com.gamevault.app.ui.more.MoreScreen
 import com.gamevault.app.ui.navigation.NavRoutes
 import com.gamevault.app.ui.settings.SettingsScreen
 import com.gamevault.app.ui.settings.SettingsViewModel
@@ -56,7 +57,7 @@ private data class TabItem(
 private val tabs = listOf(
     TabItem("Library", Icons.Default.CollectionsBookmark),
     TabItem("History", Icons.Default.History),
-    TabItem("Settings", Icons.Default.Settings),
+    TabItem("More", Icons.Default.MoreVert),
 )
 
 class MainActivity : ComponentActivity() {
@@ -103,6 +104,21 @@ private fun GameVaultNavHost(
                 onAddGame = {
                     rootNavController.navigate(NavRoutes.ADD_GAME)
                 },
+                onSettingsClick = { rootNavController.navigate(NavRoutes.SETTINGS) },
+            )
+        }
+
+        composable(NavRoutes.SETTINGS) {
+            val viewModel: SettingsViewModel = viewModel(
+                factory = SettingsViewModel.Factory(
+                    appSettings = appContainer.appSettings,
+                    repository = appContainer.gameRepository,
+                    backup = appContainer.gameVaultBackup,
+                )
+            )
+            SettingsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { rootNavController.popBackStack() },
             )
         }
 
@@ -165,16 +181,9 @@ private fun MainTabsScreen(
     appContainer: AppContainer,
     onGameClick: (Long) -> Unit,
     onAddGame: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
-
-    val settingsViewModel: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.Factory(
-            appSettings = appContainer.appSettings,
-            repository = appContainer.gameRepository,
-            backup = appContainer.gameVaultBackup,
-        )
-    )
 
     val historyViewModel: HistoryViewModel = viewModel(
         factory = HistoryViewModel.Factory(appContainer.gameRepository),
@@ -243,17 +252,9 @@ private fun MainTabsScreen(
                 }
 
                 2 -> {
-                    val navController = rememberNavController()
-                    NavHost(
-                        navController = navController,
-                        startDestination = "settings_tab",
-                    ) {
-                        composable("settings_tab") {
-                            SettingsScreen(
-                                viewModel = settingsViewModel,
-                            )
-                        }
-                    }
+                    MoreScreen(
+                        onSettingsClick = onSettingsClick,
+                    )
                 }
             }
         }
