@@ -153,40 +153,29 @@ class F95ZoneScraper {
     }
 
     private fun extractCoverUrl(doc: Document): String? {
-        // 1) First: anchor href pointing to an attachment (full-size image page)
-        val attachmentLink = doc.selectFirst("article.message-body .bbWrapper a[href*=\"/attachments/\"]")
-        if (attachmentLink != null) {
-            val href = attachmentLink.attr("href")
-            if (href.isNotBlank()) {
-                val fullUrl = normalizeUrl(href)
-                // Strip trailing slash if present so Coil gets the direct image URL
-                return fullUrl.trimEnd('/')
-            }
+        // F95Zone attachment images are served at URLs like
+        //   /attachments/thumb-filename-jpg.12345/
+        // which redirect to actual thumbnail images. The variant WITHOUT "thumb-"
+        // serves an HTML lightbox page, NOT a raw image, so we must keep thumb-.
+        //
+        // Priority: post body image → any attachment image → meta tags.
+
+        val selectors = listOf(
+            // 1) First attachment image in the OP's post body
+            "article.message-body .bbWrapper img[src*=\"/attachments/\"]",
+            // 2) Any attachment image wrapped in a link
+            "a[href*=\"/attachments/\"] img[src*=\"/attachments/\"]",
+            // 3) Any remaining attachment image
+            "img[src*=\"/attachments/\"]",
+        )
+
+        for (selector in selectors) {
+            val el = doc.selectFirst(selector) ?: continue
+            val src = el.attr("src")
+            if (src.isNotBlank()) return normalizeUrl(src)
         }
 
-        // 2) Second: try to use the img src with thumb- prefix removed
-        val thumbImg = doc.selectFirst("article.message-body .bbWrapper img[src*=\"/attachments/\"]")
-        if (thumbImg != null) {
-            val src = thumbImg.attr("src")
-            if (src.isNotBlank() && !src.contains("/data/")) {
-                // Remove "thumb-" from the path to get the full-size URL
-                // We remove just "thumb-" not the preceding slash to avoid a double-slash
-                val fullSrc = src.replace("thumb-", "")
-                return normalizeUrl(fullSrc)
-            }
-        }
-
-        // 3) Fallback: any attachment img
-        val anyImg = doc.selectFirst("img[src*=\"/attachments/\"]")
-        if (anyImg != null) {
-            val src = anyImg.attr("src")
-            if (src.isNotBlank()) {
-                val fullSrc = src.replace("thumb-", "")
-                return normalizeUrl(fullSrc)
-            }
-        }
-
-        // 4) Last resort: meta tags (og:image, twitter:image)
+        // Last resort: meta tags (og:image, twitter:image)
         for (metaSel in listOf("meta[property=\"og:image\"]", "meta[property=\"twitter:image\"]")) {
             val meta = doc.selectFirst(metaSel) ?: continue
             val content = meta.attr("content")

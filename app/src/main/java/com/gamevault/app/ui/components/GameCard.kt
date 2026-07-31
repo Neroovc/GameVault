@@ -6,6 +6,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material3.Card
@@ -35,8 +37,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameStatus
+import com.gamevault.app.domain.model.SourceType
 
 private val cardShape = RoundedCornerShape(12.dp)
 
@@ -48,7 +52,7 @@ fun GameCard(
     modifier: Modifier = Modifier,
     isSelected: Boolean = false,
     onLongClick: () -> Unit = {},
-    isCompact: Boolean = false,
+    gridMode: GridMode = GridMode.COMFORTABLE,
 ) {
     Card(
         modifier = modifier
@@ -63,130 +67,303 @@ fun GameCard(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         ),
     ) {
-        Column {
-            // ── Cover ──────────────────────────────────────────
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(4f / 3f),
-            ) {
-                if (game.coverUrl != null) {
-                    AsyncImage(
-                        model = game.coverUrl,
-                        contentDescription = game.title,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
-                        contentScale = ContentScale.Crop,
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Gamepad,
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                        )
-                    }
-                }
+        if (gridMode == GridMode.LIST) {
+            ListContent(game, isSelected)
+        } else {
+            GridContent(game, isSelected, isCompact = gridMode == GridMode.COMPACT)
+        }
+    }
+}
 
-                // Selection overlay
-                if (isSelected) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
-                    )
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Selected",
-                        tint = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(6.dp)
-                            .size(24.dp),
-                    )
-                }
-
-                // Status badge
-                StatusBadge(
-                    status = game.status,
+@Composable
+private fun GridContent(
+    game: Game,
+    isSelected: Boolean,
+    isCompact: Boolean,
+) {
+    Column {
+        // ── Cover ──
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(4f / 3f),
+        ) {
+            if (game.coverUrl != null) {
+                AsyncImage(
+                    model = game.coverUrl,
+                    contentDescription = game.title,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(6.dp),
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                    contentScale = ContentScale.Crop,
                 )
-
-                // Compact overlay title (bottom-center)
-                if (isCompact) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.BottomCenter)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                    ) {
-                        Text(
-                            text = game.title,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-
-                // Rating pill (bottom-right of cover)
-                if (game.personalRating != null) {
-                    RatingPill(
-                        rating = game.personalRating,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(6.dp),
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Gamepad,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                     )
                 }
             }
 
-            // ── Info section (non-compact only) ─────────────────
-            if (!isCompact) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
-                    Text(
-                        text = game.title,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Medium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+            // Selection overlay
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                )
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(24.dp),
+                )
+            }
+
+            // Status badge (top-start)
+            StatusBadge(
+                status = game.status,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(6.dp),
+            )
+
+            // Engine + Source badge (top-end) — always visible
+            if (game.engine != null || game.sourceType != SourceType.MANUAL) {
+                EngineSourceBadge(
+                    engine = game.engine?.displayName,
+                    source = if (game.sourceType != SourceType.MANUAL) game.sourceType.displayName else null,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                )
+            }
+
+            // Rating pill (bottom-end)
+            if (game.personalRating != null) {
+                RatingPill(
+                    rating = game.personalRating,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(6.dp),
+                )
+            }
+
+            // Compact overlay title — NO background box, just text over image
+            if (isCompact) {
+                Text(
+                    text = game.title,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+
+        // Comfortable: title below the image
+        if (!isCompact) {
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                Text(
+                    text = game.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListContent(
+    game: Game,
+    isSelected: Boolean,
+) {
+    Row(modifier = Modifier.height(IntrinsicSize.Min)) {
+        // ── Thumbnail ──
+        Box(
+            modifier = Modifier
+                .width(90.dp)
+                .height(IntrinsicSize.Min),
+        ) {
+            if (game.coverUrl != null) {
+                AsyncImage(
+                    model = game.coverUrl,
+                    contentDescription = game.title,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)),
+                    contentScale = ContentScale.Crop,
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Gamepad,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
                     )
+                }
+            }
 
-                    if (game.developer != null) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = game.developer,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+            // Status badge on thumbnail
+            StatusBadge(
+                status = game.status,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp),
+            )
 
-                    if (game.engine != null) {
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = game.engine.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.tertiary,
-                            maxLines = 1,
-                        )
-                    }
+            // Selection overlay
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp))
+                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                )
+                Icon(
+                    imageVector = Icons.Filled.CheckCircle,
+                    contentDescription = "Selected",
+                    tint = Color.White,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .size(20.dp),
+                )
+            }
+        }
+
+        // ── Details ──
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            Text(
+                text = game.title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Engine + Source as text
+            val meta = buildList {
+                game.engine?.let { add(it.displayName) }
+                if (game.sourceType != SourceType.MANUAL) add(game.sourceType.displayName)
+            }
+            if (meta.isNotEmpty()) {
+                Text(
+                    text = meta.joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Rating row
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (game.personalRating != null) {
+                    Icon(
+                        imageVector = Icons.Filled.Star,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = Color(0xFFFFB300),
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = formatRating(game.personalRating),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+
+                if (game.playTimeMinutes > 0) {
+                    Icon(
+                        imageVector = Icons.Filled.Schedule,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.width(2.dp))
+                    Text(
+                        text = formatPlayTime(game.playTimeMinutes),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun EngineSourceBadge(
+    engine: String?,
+    source: String?,
+    modifier: Modifier = Modifier,
+) {
+    val label = buildList {
+        engine?.let { add(it) }
+        source?.let { add(it) }
+    }
+    if (label.isEmpty()) return
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        ),
+    ) {
+        Text(
+            text = label.joinToString(" · "),
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+        )
+    }
+}
+
+private fun formatPlayTime(minutes: Long): String {
+    val h = minutes / 60
+    val m = minutes % 60
+    return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
     }
 }
 

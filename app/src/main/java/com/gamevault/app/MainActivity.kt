@@ -142,7 +142,7 @@ private fun GameVaultNavHost(
             val collectionId = backStackEntry.arguments?.getLong("collectionId") ?: return@composable
             val viewModel: LibraryViewModel = viewModel(
                 key = "collection_$collectionId",
-                factory = LibraryViewModel.Factory(appContainer.gameRepository),
+                factory = LibraryViewModel.Factory(appContainer.gameRepository, appContainer.appSettings),
             )
             LaunchedEffect(collectionId) {
                 viewModel.onCollectionFilterChanged(collectionId)
@@ -216,7 +216,7 @@ private fun MainTabsScreen(
                     ) {
                         composable("library_tab") {
                             val viewModel: LibraryViewModel = viewModel(
-                                factory = LibraryViewModel.Factory(appContainer.gameRepository),
+                                factory = LibraryViewModel.Factory(appContainer.gameRepository, appContainer.appSettings),
                             )
                             LibraryScreen(
                                 viewModel = viewModel,

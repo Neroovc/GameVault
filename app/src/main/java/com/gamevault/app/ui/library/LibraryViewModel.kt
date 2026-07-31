@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
+import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +28,7 @@ data class LibraryUiState(
     val sortOrder: SortOrder = SortOrder.DATE_ADDED_DESC,
     val selectedCollectionId: Long? = null,
     val groupBy: GroupBy = GroupBy.NONE,
-    val isCompactGrid: Boolean = false,
+    val gridMode: GridMode = GridMode.COMFORTABLE,
 )
 
 enum class GameStatusFilter {
@@ -67,6 +69,7 @@ sealed class DisplayItem {
 
 class LibraryViewModel(
     private val repository: GameRepository,
+    private val appSettings: AppSettings,
 ) : ViewModel() {
 
     private val _searchQuery = MutableStateFlow("")
@@ -82,11 +85,19 @@ class LibraryViewModel(
     val selectedCollectionId: StateFlow<Long?> = _selectedCollectionId.asStateFlow()
 
     private val _groupBy = MutableStateFlow(GroupBy.NONE)
-    private val _isCompactGrid = MutableStateFlow(false)
-    val isCompactGrid: StateFlow<Boolean> = _isCompactGrid.asStateFlow()
+    private val _gridMode = MutableStateFlow(GridMode.COMFORTABLE)
+    val gridMode: StateFlow<GridMode> = _gridMode.asStateFlow()
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    init {
+        viewModelScope.launch {
+            appSettings.gridMode.collect { mode ->
+                _gridMode.value = mode
+            }
+        }
+    }
 
     private data class FilterParams(
         val query: String,
@@ -133,9 +144,9 @@ class LibraryViewModel(
 
     val uiState: StateFlow<LibraryUiState> = combine(
         queryState,
-        _isCompactGrid,
-    ) { state, isCompact ->
-        state.copy(isCompactGrid = isCompact)
+        _gridMode,
+    ) { state, mode ->
+        state.copy(gridMode = mode)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -154,7 +165,10 @@ class LibraryViewModel(
 
     fun onGroupByChanged(group: GroupBy) { _groupBy.value = group }
 
-    fun onCompactGridChanged(compact: Boolean) { _isCompactGrid.value = compact }
+    fun onGridModeChanged(mode: GridMode) {
+        _gridMode.value = mode
+        viewModelScope.launch { appSettings.setGridMode(mode) }
+    }
 
     fun deleteGame(gameId: Long) {
         viewModelScope.launch { repository.deleteGame(gameId) }
@@ -231,9 +245,12 @@ class LibraryViewModel(
         }
     }
 
-    class Factory(private val repository: GameRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val repository: GameRepository,
+        private val appSettings: AppSettings,
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            LibraryViewModel(repository) as T
+            LibraryViewModel(repository, appSettings) as T
     }
 }

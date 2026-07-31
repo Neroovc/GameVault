@@ -48,7 +48,6 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SearchBarDefaults
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -70,6 +69,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamevault.app.domain.model.Collection
+import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
 
@@ -203,7 +203,7 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 150.dp),
+                        columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
                         contentPadding = PaddingValues(12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -234,7 +234,7 @@ fun LibraryScreen(
                                         GameCard(
                                             game = item.game,
                                             isSelected = item.game.id in selectedIds,
-                                            isCompact = uiState.isCompactGrid,
+                                            gridMode = uiState.gridMode,
                                             onClick = {
                                                 if (isSelectionMode) {
                                                     selectionViewModel.toggleSelection(item.game.id)
@@ -266,7 +266,7 @@ fun LibraryScreen(
             onCollectionChanged = viewModel::onCollectionFilterChanged,
             onSortChanged = viewModel::onSortOrderChanged,
             onGroupChanged = viewModel::onGroupByChanged,
-            onCompactChanged = viewModel::onCompactGridChanged,
+            onGridModeChanged = viewModel::onGridModeChanged,
         )
     }
 
@@ -327,7 +327,7 @@ private fun FilterSortSheet(
     onCollectionChanged: (Long?) -> Unit,
     onSortChanged: (SortOrder) -> Unit,
     onGroupChanged: (GroupBy) -> Unit,
-    onCompactChanged: (Boolean) -> Unit,
+    onGridModeChanged: (GridMode) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -386,13 +386,15 @@ private fun FilterSortSheet(
             SectionLabel("Appearance")
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Compact grid", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Switch(
-                    checked = uiState.isCompactGrid,
-                    onCheckedChange = { onCompactChanged(it) },
-                )
+                GridMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = uiState.gridMode == mode,
+                        onClick = { onGridModeChanged(mode) },
+                        label = { Text(mode.displayName, style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
             }
         }
     }

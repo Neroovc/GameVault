@@ -21,6 +21,17 @@ enum class ThemeMode(val value: Int) {
     }
 }
 
+enum class GridMode(val value: Int, val displayName: String) {
+    COMPACT(0, "Compact"),
+    COMFORTABLE(1, "Comfortable"),
+    LIST(2, "List");
+
+    companion object {
+        fun fromValue(value: Int): GridMode =
+            entries.firstOrNull { it.value == value } ?: COMFORTABLE
+    }
+}
+
 /**
  * Persisted app settings backed by Jetpack DataStore.
  */
@@ -30,6 +41,7 @@ class AppSettings(private val context: Context) {
         val THEME_MODE = intPreferencesKey("theme_mode")
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
         val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
+        val GRID_MODE = intPreferencesKey("grid_mode")
     }
 
     /** Observe the current theme mode. Defaults to SYSTEM. */
@@ -65,6 +77,18 @@ class AppSettings(private val context: Context) {
     suspend fun setGifAutoplay(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.GIF_AUTOPLAY] = enabled
+        }
+    }
+
+    /** Observe the grid mode. Defaults to COMFORTABLE. */
+    val gridMode: Flow<GridMode> = context.dataStore.data.map { prefs ->
+        GridMode.fromValue(prefs[Keys.GRID_MODE] ?: GridMode.COMFORTABLE.value)
+    }
+
+    /** Persist the grid mode. */
+    suspend fun setGridMode(mode: GridMode) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.GRID_MODE] = mode.value
         }
     }
 }
