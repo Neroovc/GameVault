@@ -5,6 +5,8 @@ import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.SourceType
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import java.net.URLEncoder
 
 /**
  * Scrapes game metadata from F95Zone threads.
@@ -56,33 +58,80 @@ class F95ZoneScraper {
 
     /**
      * Search F95Zone for games matching a query.
-     * Uses F95Zone's built-in search.
+     *
+     * F95Zone's own search endpoint returns HTTP 403 for non-browser clients
+     * (verified against live HTML), and Bing/DuckDuckGo are blocked or useless
+     * (Turnstile CAPTCHA / attachment noise). Brave Search works and serves
+     * real thread results, so we query it with a `site:` restriction.
+     *
+     * Verified result structure (search.brave.com/search):
+     *   block     = div.snippet[data-pos]
+     *   url       = a[href*="f95zone.to/threads/"]  (direct thread URL, no redirect wrapper)
+     *   title     = div.title.search-snippet-title
+     *   snippet   = .snippet-description
+     *
+     * @param cookie Kept in the signature for API stability (used by scrapeGame);
+     *               Brave search works without it.
      */
     suspend fun search(query: String, cookie: String? = null): List<SearchResult> {
         return try {
-            val searchUrl = "https://f95zone.to/search"
-            val doc = fetchDocument(
-                "$searchUrl?q=${java.net.URLEncoder.encode(query, "UTF-8")}", cookie,
-            )
+            val searchUrl = "https://search.brave.com/search?q=" +
+                URLEncoder.encode("site:f95zone.to $query", "UTF-8")
+            val doc = fetchDocument(searchUrl, cookie)
 
-            doc.select("article[data-author]").mapNotNull { article ->
-                val titleEl = article.selectFirst("h3.title a")
-                val linkEl = article.selectFirst("a[href*=/threads/]")
-                val link = linkEl?.attr("href") ?: return@mapNotNull null
-
-                SearchResult(
-                    title = titleEl?.text() ?: "Unknown",
-                    url = if (link.startsWith("http")) link else "https://f95zone.to$link",
-                    author = article.attr("data-author"),
-                    snippet = article.selectFirst(".messageText")?.text(),
-                )
-            }.take(20)
+            val blocks = doc.select("div.snippet")
+            val results = if (blocks.isNotEmpty()) {
+                blocks.mapNotNull { block ->
+                    val link = block.selectFirst("a[href*=\"f95zone.to/threads/\"]")
+                        ?: return@mapNotNull null
+                    SearchResult(
+                        title = extractBraveTitle(block, link),
+                        url = link.attr("href"),
+                        snippet = block.selectFirst(".snippet-description")?.text(),
+                    )
+                }
+            } else {
+                // Fallback: Brave may change its markup — pick thread links anywhere.
+                doc.select("a[href*=\"f95zone.to/threads/\"]").mapNotNull { link ->
+                    SearchResult(
+                        title = extractBraveTitle(null, link),
+                        url = link.attr("href"),
+                    )
+                }
+            }
+            results.take(20)
         } catch (e: Exception) {
             emptyList()
         }
     }
 
+    /**
+     * Fetch just the cover image for a thread URL.
+     * Thread pages are fetchable by Jsoup (proven in production), so this is
+     * the lazy cover-enrichment path used by the browser grid.
+     */
+    suspend fun fetchCover(url: String, cookie: String? = null): String? {
+        return try {
+            val doc = fetchDocument(url, cookie)
+            extractCoverUrl(doc)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     // ── Private helpers ────────────────────────────────────
+
+    private fun extractBraveTitle(block: Element?, link: Element): String {
+        val raw = block?.selectFirst("div.title.search-snippet-title")?.text()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?: link.text().trim().takeIf { it.isNotEmpty() }
+            ?: "Unknown"
+        // Brave titles often carry a trailing site suffix, e.g. "Game Name - F95zone".
+        return raw.replace(Regex("""(?i)(\s*[-–—|]\s*)?F95zone\s*$"""), "")
+            .trim()
+            .ifEmpty { "Unknown" }
+    }
 
     private suspend fun fetchDocument(url: String, cookie: String?): Document {
         val conn = Jsoup.connect(url)

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -23,7 +22,6 @@ import androidx.compose.ui.Modifier
 @Composable
 fun MoreScreen(
     onSettingsClick: () -> Unit,
-    onExtensionsClick: () -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("More") }) },
@@ -33,16 +31,6 @@ fun MoreScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            item {
-                ListItem(
-                    headlineContent = { Text("Extensions") },
-                    supportingContent = { Text("Browse and manage game sources") },
-                    leadingContent = {
-                        Icon(Icons.Default.Extension, contentDescription = null)
-                    },
-                    modifier = Modifier.clickable { onExtensionsClick() },
-                )
-            }
             item {
                 ListItem(
                     headlineContent = { Text("Settings") },

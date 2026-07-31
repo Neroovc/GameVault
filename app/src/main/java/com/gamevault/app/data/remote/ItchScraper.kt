@@ -53,7 +53,12 @@ class ItchScraper {
                     title = titleEl?.text() ?: linkEl.text() ?: "Unknown",
                     url = normalizeUrl(href, BASE_URL),
                     thumbnailUrl = thumbEl?.let { el ->
-                        normalizeUrl(el.attr("src").ifBlank { el.attr("data-src") }, BASE_URL)
+                        normalizeUrl(
+                            el.attr("src")
+                                .ifBlank { el.attr("data-src") }
+                                .ifBlank { el.attr("data-lazy_src") },
+                            BASE_URL,
+                        )
                     },
                     developer = cell.selectFirst(".game_author")?.text()
                         ?.removePrefix("by")?.trim(),
@@ -170,7 +175,10 @@ class ItchScraper {
 
         for (selector in selectors) {
             val el = doc.selectFirst(selector) ?: continue
-            val src = el.attr("content").ifBlank { el.attr("src") }.ifBlank { el.attr("data-src") }
+            val src = el.attr("content")
+                .ifBlank { el.attr("src") }
+                .ifBlank { el.attr("data-src") }
+                .ifBlank { el.attr("data-lazy_src") }
             if (src.isNotBlank()) return normalizeUrl(src, pageUrl)
         }
 

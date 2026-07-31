@@ -10,6 +10,7 @@ import com.gamevault.app.domain.source.SourceResult
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameStatus
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.firstOrNull
 
 /**
  * Adapts the existing [F95ZoneScraper] to the [GameSource] interface.
@@ -47,6 +48,9 @@ class F95ZoneSource(
             SourceResult.Error("Search failed: $msg", e)
         }
     }
+
+    override suspend fun fetchCover(url: String): String? =
+        scraper.fetchCover(url, appSettings.f95zoneCookie.firstOrNull())
 
     override suspend fun fetchDetail(url: String): SourceResult<Game> {
         return try {

@@ -47,4 +47,11 @@ interface GameSource {
 
     /** Fetch full game metadata from a source-specific [url]. */
     suspend fun fetchDetail(url: String): SourceResult<Game>
+
+    /**
+     * Lazily fetch a cover image URL for a search result page.
+     * Optional hook — sources that cannot cheaply resolve covers (or already
+     * provide thumbnails in [SearchResult.thumbnailUrl]) leave the default.
+     */
+    suspend fun fetchCover(url: String): String? = null
 }

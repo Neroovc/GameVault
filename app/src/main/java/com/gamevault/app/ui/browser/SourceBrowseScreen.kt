@@ -1,25 +1,30 @@
-package com.gamevault.app.ui.extensions
+package com.gamevault.app.ui.browser
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Gamepad
+import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -36,6 +41,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,14 +49,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.repository.GameRepository
+import com.gamevault.app.domain.source.GameSource
 import com.gamevault.app.domain.source.SearchResult
 import com.gamevault.app.domain.source.SourceManager
 import com.gamevault.app.domain.source.SourceResult
@@ -61,7 +70,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Browse a single game source: debounced search, result list, detail fetch
+ * Browse a single game source: debounced search, result grid, detail fetch
  * and confirm dialog to add a game to the library.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -97,6 +106,10 @@ fun SourceBrowseScreen(
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Screen-level cache of lazily fetched covers: url -> cover (null = fetched
+    // and failed, so we never retry within this screen session).
+    val coverCache = remember { mutableStateMapOf<String, String?>() }
 
     // Debounced search. Cancelled automatically when [query] changes.
     LaunchedEffect(query) {
@@ -142,8 +155,7 @@ fun SourceBrowseScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
+                .padding(innerPadding),
         ) {
             OutlinedTextField(
                 value = query,
@@ -160,7 +172,7 @@ fun SourceBrowseScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             when {
@@ -213,13 +225,22 @@ fun SourceBrowseScreen(
                 }
 
                 else -> {
-                    LazyColumn(
+                    // 2-column grid mirroring the library's card grid:
+                    // same cover ratio, corner radius, title placement and
+                    // spacing as GameCard (LibraryScreen config: 12.dp padding,
+                    // 12.dp item spacing).
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         items(results, key = { it.url }) { result ->
-                            SearchResultRow(
+                            SearchResultCard(
                                 result = result,
+                                source = source,
+                                coverCache = coverCache,
                                 onClick = {
                                     scope.launch {
                                         val detail = withContext(Dispatchers.IO) {
@@ -297,55 +318,88 @@ fun SourceBrowseScreen(
 }
 
 @Composable
-private fun SearchResultRow(
+private fun SearchResultCard(
     result: SearchResult,
+    source: GameSource,
+    coverCache: MutableMap<String, String?>,
     onClick: () -> Unit,
 ) {
-    Row(
+    // Start from the search thumbnail; lazily enrich from the thread page when
+    // missing (F95Zone results carry no thumbnail from Brave). The cache is
+    // screen-level, so scrolling away and back does not refetch.
+    var cover by remember(result.url) { mutableStateOf(result.thumbnailUrl) }
+    LaunchedEffect(result.url, cover) {
+        if (cover == null && !coverCache.containsKey(result.url)) {
+            val fetched = withContext(Dispatchers.IO) { source.fetchCover(result.url) }
+            coverCache[result.url] = fetched
+            cover = fetched
+        }
+    }
+
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            // Transparent card — the image is the card (same as GameCard).
+            containerColor = Color.Transparent,
+        ),
     ) {
-        if (result.thumbnailUrl != null) {
-            AsyncImage(
-                model = result.thumbnailUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(width = 64.dp, height = 84.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentScale = ContentScale.Crop,
-            )
-        } else {
+        Column {
+            // ── Cover (same ratio/corners as GameCard) ──
             Box(
                 modifier = Modifier
-                    .size(width = 64.dp, height = 84.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .aspectRatio(4f / 3f),
             ) {
-                Icon(
-                    Icons.Default.Gamepad,
-                    contentDescription = null,
-                    modifier = Modifier.size(28.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (cover != null) {
+                    AsyncImage(
+                        model = cover,
+                        contentDescription = result.title,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Gamepad,
+                            contentDescription = null,
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        )
+                    }
+                }
             }
-        }
 
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = result.title,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val subtitle = listOfNotNull(result.developer, result.engine)
-                .joinToString(" · ")
-            if (subtitle.isNotEmpty()) {
+            // ── Title + meta below the cover (same as GameCard comfortable) ──
+            Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                 Text(
-                    text = subtitle,
+                    text = result.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                // "engine · source", or "developer · engine" when the engine is
+                // unknown; always falls back to showing at least the source name.
+                val meta = when {
+                    result.engine != null -> listOf(result.engine, source.name)
+                    result.developer != null -> listOf(result.developer, result.engine ?: source.name)
+                    else -> listOf(source.name)
+                }
+                Text(
+                    text = meta.joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

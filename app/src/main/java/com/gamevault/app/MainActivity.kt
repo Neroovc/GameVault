@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -37,10 +38,10 @@ import androidx.navigation.navArgument
 import com.gamevault.app.data.settings.ThemeMode
 import com.gamevault.app.ui.addgame.AddGameScreen
 import com.gamevault.app.ui.addgame.AddGameViewModel
+import com.gamevault.app.ui.browser.BrowserScreen
+import com.gamevault.app.ui.browser.SourceBrowseScreen
 import com.gamevault.app.ui.detail.GameDetailScreen
 import com.gamevault.app.ui.detail.GameDetailViewModel
-import com.gamevault.app.ui.extensions.ExtensionsScreen
-import com.gamevault.app.ui.extensions.SourceBrowseScreen
 import com.gamevault.app.ui.history.HistoryScreen
 import com.gamevault.app.ui.history.HistoryViewModel
 import com.gamevault.app.ui.library.LibraryScreen
@@ -59,6 +60,7 @@ private data class TabItem(
 private val tabs = listOf(
     TabItem("Library", Icons.Default.CollectionsBookmark),
     TabItem("History", Icons.Default.History),
+    TabItem("Browser", Icons.Default.Public),
     TabItem("More", Icons.Default.MoreVert),
 )
 
@@ -107,16 +109,9 @@ private fun GameVaultNavHost(
                     rootNavController.navigate(NavRoutes.ADD_GAME)
                 },
                 onSettingsClick = { rootNavController.navigate(NavRoutes.SETTINGS) },
-                onExtensionsClick = { rootNavController.navigate(NavRoutes.EXTENSIONS) },
-            )
-        }
-
-        composable(NavRoutes.EXTENSIONS) {
-            ExtensionsScreen(
-                sourceManager = appContainer.sourceManager,
-                appSettings = appContainer.appSettings,
-                onSourceClick = { sourceId -> rootNavController.navigate(NavRoutes.sourceBrowse(sourceId)) },
-                onNavigateBack = { rootNavController.popBackStack() },
+                onSourceClick = { sourceId ->
+                    rootNavController.navigate(NavRoutes.sourceBrowse(sourceId))
+                },
             )
         }
 
@@ -208,7 +203,7 @@ private fun MainTabsScreen(
     onGameClick: (Long) -> Unit,
     onAddGame: () -> Unit,
     onSettingsClick: () -> Unit,
-    onExtensionsClick: () -> Unit,
+    onSourceClick: (String) -> Unit,
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
 
@@ -279,9 +274,16 @@ private fun MainTabsScreen(
                 }
 
                 2 -> {
+                    BrowserScreen(
+                        sourceManager = appContainer.sourceManager,
+                        appSettings = appContainer.appSettings,
+                        onSourceClick = onSourceClick,
+                    )
+                }
+
+                3 -> {
                     MoreScreen(
                         onSettingsClick = onSettingsClick,
-                        onExtensionsClick = onExtensionsClick,
                     )
                 }
             }
