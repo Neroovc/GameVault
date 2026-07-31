@@ -96,16 +96,15 @@ class LibraryViewModel(
     )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uiState: StateFlow<LibraryUiState> = combine(
+    private val queryState: StateFlow<LibraryUiState> = combine(
         _searchQuery,
         _selectedStatus,
         _sortOrder,
         _selectedCollectionId,
         _groupBy,
-        _isCompactGrid,
-    ) { query, status, sort, collectionId, group, isCompact ->
-        Triple(FilterParams(query, status, sort, collectionId), group, isCompact)
-    }.flatMapLatest { (params, group, isCompact) ->
+    ) { query, status, sort, collectionId, group ->
+        FilterParams(query, status, sort, collectionId) to group
+    }.flatMapLatest { (params, group) ->
         val source: Flow<List<Game>> = when {
             params.query.isNotBlank() -> repository.searchGames(params.query)
             params.collectionId != null -> repository.observeGamesInCollection(params.collectionId)
@@ -124,9 +123,19 @@ class LibraryViewModel(
                     sortOrder = _sortOrder.value,
                     selectedCollectionId = _selectedCollectionId.value,
                     groupBy = _groupBy.value,
-                    isCompactGrid = isCompact,
                 )
             }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = LibraryUiState(isLoading = true),
+    )
+
+    val uiState: StateFlow<LibraryUiState> = combine(
+        queryState,
+        _isCompactGrid,
+    ) { state, isCompact ->
+        state.copy(isCompactGrid = isCompact)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
