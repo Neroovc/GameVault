@@ -18,9 +18,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoStories
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Coffee
+import androidx.compose.material.icons.filled.Flight
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.QuestionMark
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material.icons.outlined.Gamepad
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,17 +37,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.gamevault.app.R
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.domain.model.Game
+import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.SourceType
 
@@ -142,15 +157,13 @@ private fun GridContent(
             )
 
             // Engine + Source badge (top-end) — always visible
-            if (game.engine != null || game.sourceType != SourceType.MANUAL) {
-                EngineSourceBadge(
-                    engine = game.engine?.displayName,
-                    source = if (game.sourceType != SourceType.MANUAL) game.sourceType.displayName else null,
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(6.dp),
-                )
-            }
+            EngineSourceBadge(
+                engine = game.engine,
+                sourceType = game.sourceType,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(6.dp),
+            )
 
             // Rating pill (bottom-end)
             if (game.personalRating != null) {
@@ -327,17 +340,35 @@ private fun ListContent(
     }
 }
 
+private fun engineIcon(engine: GameEngine): ImageVector = when (engine) {
+    GameEngine.RENPY -> Icons.Filled.AutoStories
+    GameEngine.RPGM -> Icons.Filled.Map
+    GameEngine.UNITY -> Icons.Filled.ViewInAr
+    GameEngine.UNREAL -> Icons.Filled.Flight
+    GameEngine.HTML -> Icons.Filled.Code
+    GameEngine.FLASH -> Icons.Filled.Bolt
+    GameEngine.JAVA -> Icons.Filled.Coffee
+    GameEngine.TWINE -> Icons.Filled.Link
+    GameEngine.OTHER -> Icons.Filled.QuestionMark
+    GameEngine.UNKNOWN -> Icons.Filled.QuestionMark
+}
+
+@Composable
+private fun sourcePainter(sourceType: SourceType): Painter? = when (sourceType) {
+    SourceType.F95ZONE -> painterResource(R.drawable.ic_source_f95zone)
+    SourceType.ITCHIO -> painterResource(R.drawable.ic_source_itch)
+    else -> null
+}
+
 @Composable
 private fun EngineSourceBadge(
-    engine: String?,
-    source: String?,
+    engine: GameEngine?,
+    sourceType: SourceType?,
     modifier: Modifier = Modifier,
 ) {
-    val label = buildList {
-        engine?.let { add(it) }
-        source?.let { add(it) }
-    }
-    if (label.isEmpty()) return
+    val showEngine = engine != null
+    val showSource = sourceType != null && sourceType != SourceType.MANUAL
+    if (!showEngine && !showSource) return
 
     Card(
         modifier = modifier,
@@ -346,14 +377,45 @@ private fun EngineSourceBadge(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         ),
     ) {
-        Text(
-            text = label.joinToString(" · "),
+        Row(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            if (showEngine) {
+                Icon(
+                    imageVector = engineIcon(engine),
+                    contentDescription = engine.displayName,
+                    modifier = Modifier.size(12.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = engine.displayName,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                )
+            }
+            if (showSource) {
+                val painter = sourcePainter(sourceType)
+                if (painter != null) {
+                    Icon(
+                        painter = painter,
+                        contentDescription = sourceType.displayName,
+                        modifier = Modifier.size(12.dp),
+                    )
+                } else {
+                    Text(
+                        text = sourceType.displayName,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }
 

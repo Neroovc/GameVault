@@ -41,6 +41,7 @@ data class SettingsUiState(
     val renameTarget: Collection? = null,
     val newCollectionName: String = "",
     val backupUi: BackupUiState = BackupUiState(),
+    val defaultCollectionId: Long? = null,
 )
 
 class SettingsViewModel(
@@ -79,6 +80,7 @@ class SettingsViewModel(
         _renameTarget,
         _newCollectionName,
         _backupUi,
+        appSettings.defaultCollectionId,
     ) { array ->
         @Suppress("UNCHECKED_CAST")
         SettingsUiState(
@@ -91,6 +93,7 @@ class SettingsViewModel(
             renameTarget = array[6] as Collection?,
             newCollectionName = array[7] as String,
             backupUi = array[8] as BackupUiState,
+            defaultCollectionId = array[9] as Long?,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -113,6 +116,12 @@ class SettingsViewModel(
     fun setGifAutoplay(enabled: Boolean) {
         viewModelScope.launch {
             appSettings.setGifAutoplay(enabled)
+        }
+    }
+
+    fun setDefaultCollectionId(collectionId: Long?) {
+        viewModelScope.launch {
+            appSettings.setDefaultCollectionId(collectionId)
         }
     }
 

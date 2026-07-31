@@ -7,6 +7,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.gamevault.app.data.remote.F95ZoneScraper
 import com.gamevault.app.data.remote.ScrapeResult
+import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.GameStatus
@@ -15,6 +16,7 @@ import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -42,6 +44,7 @@ data class AddGameUiState(
 class AddGameViewModel(
     private val gameRepository: GameRepository,
     private val scraper: F95ZoneScraper,
+    private val appSettings: AppSettings,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(AddGameUiState())
@@ -122,7 +125,11 @@ class AddGameViewModel(
                 sourceType = state.sourceType,
                 sourceUrl = state.sourceUrl.ifBlank { null },
             )
-            gameRepository.saveGame(game)
+            val savedId = gameRepository.saveGame(game)
+            val defaultCollectionId = appSettings.defaultCollectionId.first()
+            if (defaultCollectionId != null) {
+                gameRepository.addGameToCollection(savedId, defaultCollectionId)
+            }
             _uiState.update { it.copy(isSaving = false, saveSuccess = true) }
         }
     }
@@ -134,10 +141,11 @@ class AddGameViewModel(
     class Factory(
         private val gameRepository: GameRepository,
         private val scraper: F95ZoneScraper,
+        private val appSettings: AppSettings,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return AddGameViewModel(gameRepository, scraper) as T
+            return AddGameViewModel(gameRepository, scraper, appSettings) as T
         }
     }
 }

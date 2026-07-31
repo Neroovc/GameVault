@@ -108,7 +108,7 @@ private fun GameVaultNavHost(
 
         composable(NavRoutes.ADD_GAME) {
             val viewModel: AddGameViewModel = viewModel(
-                factory = AddGameViewModel.Factory(appContainer.gameRepository, appContainer.f95ZoneScraper),
+                factory = AddGameViewModel.Factory(appContainer.gameRepository, appContainer.f95ZoneScraper, appContainer.appSettings),
             )
             AddGameScreen(
                 viewModel = viewModel,

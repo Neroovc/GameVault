@@ -3,6 +3,7 @@ package com.gamevault.app.ui.settings
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,12 +19,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CollectionsBookmark
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -52,6 +57,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,6 +136,15 @@ fun SettingsScreen(
                     onSetNewName = viewModel::setNewCollectionName,
                     onCreateCollection = viewModel::createCollection,
                     onRenameCollection = viewModel::renameCollection,
+                )
+            }
+
+            // Default save location
+            item {
+                DefaultLocationSection(
+                    defaultCollectionId = state.defaultCollectionId,
+                    collections = state.collections,
+                    onSelected = viewModel::setDefaultCollectionId,
                 )
             }
 
@@ -391,6 +406,69 @@ private fun CollectionManagementSection(
                 TextButton(onClick = onDismissRename) { Text("Cancel") }
             },
         )
+    }
+}
+
+@Composable
+private fun DefaultLocationSection(
+    defaultCollectionId: Long?,
+    collections: List<CollectionWithCount>,
+    onSelected: (Long?) -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Default save location", style = MaterialTheme.typography.titleSmall)
+        Text(
+            "New games added by URL will land here",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        // "Library" (root) option
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    if (defaultCollectionId == null) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+                .clickable { onSelected(null) }
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(Icons.Default.CollectionsBookmark, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Library (root)", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            if (defaultCollectionId == null) {
+                Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        // Each collection
+        collections.forEach { cwc ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(
+                        if (defaultCollectionId == cwc.collection.id) MaterialTheme.colorScheme.primaryContainer
+                        else MaterialTheme.colorScheme.surfaceContainerHighest
+                    )
+                    .clickable { onSelected(cwc.collection.id) }
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(cwc.collection.name, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text("${cwc.gameCount}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (defaultCollectionId == cwc.collection.id) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(Icons.Default.Check, contentDescription = "Selected", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+        }
     }
 }
 

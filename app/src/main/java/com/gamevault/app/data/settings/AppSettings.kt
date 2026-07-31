@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -42,6 +43,7 @@ class AppSettings(private val context: Context) {
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
         val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
         val GRID_MODE = intPreferencesKey("grid_mode")
+        val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
     }
 
     /** Observe the current theme mode. Defaults to SYSTEM. */
@@ -89,6 +91,17 @@ class AppSettings(private val context: Context) {
     suspend fun setGridMode(mode: GridMode) {
         context.dataStore.edit { prefs ->
             prefs[Keys.GRID_MODE] = mode.value
+        }
+    }
+
+    /** Default collection where newly added games land. null = library root. */
+    val defaultCollectionId: Flow<Long?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.DEFAULT_COLLECTION_ID]?.takeIf { it >= 0 }
+    }
+
+    suspend fun setDefaultCollectionId(collectionId: Long?) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.DEFAULT_COLLECTION_ID] = collectionId ?: -1L
         }
     }
 }

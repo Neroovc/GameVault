@@ -154,19 +154,20 @@ class F95ZoneScraper {
 
     private fun extractCoverUrl(doc: Document): String? {
         // F95Zone attachment images are served at URLs like
-        //   /attachments/thumb-filename-jpg.12345/
-        // which redirect to actual thumbnail images. The variant WITHOUT "thumb-"
-        // serves an HTML lightbox page, NOT a raw image, so we must keep thumb-.
+        //   attachments/thumb-filename-jpg.12345/
+        // (RELATIVE, no leading slash) which redirect to actual thumbnail images.
+        // The variant WITHOUT "thumb-" serves an HTML lightbox page, NOT a raw
+        // image, so we must keep thumb-.
         //
         // Priority: post body image → any attachment image → meta tags.
 
         val selectors = listOf(
             // 1) First attachment image in the OP's post body
-            "article.message-body .bbWrapper img[src*=\"/attachments/\"]",
+            "article.message-body .bbWrapper img[src*=\"attachments\"]",
             // 2) Any attachment image wrapped in a link
-            "a[href*=\"/attachments/\"] img[src*=\"/attachments/\"]",
+            "a[href*=\"attachments\"] img[src*=\"attachments\"]",
             // 3) Any remaining attachment image
-            "img[src*=\"/attachments/\"]",
+            "img[src*=\"attachments\"]",
         )
 
         for (selector in selectors) {
