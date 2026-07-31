@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
@@ -368,65 +369,62 @@ private fun EngineSourceBadge(
     val showSource = sourceType != null && sourceType != SourceType.MANUAL
     if (!showEngine && !showSource) return
 
-    Card(
+    // Komikku-style: engine + source grouped as small icon pills, no text.
+    Row(
         modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        if (showEngine) {
+            BadgeIcon(
+                painter = enginePainter(engine),
+                contentDescription = engine.displayName,
+                fallback = Icons.Filled.QuestionMark,
+            )
+        }
+        if (showSource) {
+            BadgeIcon(
+                painter = sourcePainter(sourceType),
+                contentDescription = sourceType.displayName,
+                fallback = null,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BadgeIcon(
+    painter: Painter?,
+    contentDescription: String?,
+    fallback: ImageVector?,
+) {
+    Card(
         shape = RoundedCornerShape(4.dp),
         colors = CardDefaults.cardColors(
-            // Transparent — icon + text float directly over the cover (Mihon/Komikku style)
-            containerColor = Color.Transparent,
+            // Slight scrim so brand logos float over busy covers, same pill
+            // language as StatusBadge/RatingPill.
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            if (showEngine) {
-                val painter = enginePainter(engine)
-                if (painter != null) {
-                    Icon(
-                        painter = painter,
-                        contentDescription = engine.displayName,
-                        modifier = Modifier.size(12.dp),
-                        // Brand vectors carry their own colors — no tint.
-                        tint = Color.Unspecified,
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.QuestionMark,
-                        contentDescription = engine.displayName,
-                        modifier = Modifier.size(12.dp),
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                Text(
-                    text = engine.displayName,
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            }
-            if (showSource) {
-                val painter = sourcePainter(sourceType)
-                if (painter != null) {
-                    Icon(
-                        painter = painter,
-                        contentDescription = sourceType.displayName,
-                        modifier = Modifier.size(12.dp),
-                        // Brand vectors carry their own colors — no tint.
-                        tint = Color.Unspecified,
-                    )
-                } else {
-                    Text(
-                        text = sourceType.displayName,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                    )
-                }
-            }
+        if (painter != null) {
+            Icon(
+                painter = painter,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .padding(horizontal = 3.dp, vertical = 2.dp)
+                    .size(14.dp),
+                // Brand logos carry their own colors — no tint.
+                tint = Color.Unspecified,
+            )
+        } else if (fallback != null) {
+            Icon(
+                imageVector = fallback,
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .padding(horizontal = 3.dp, vertical = 2.dp)
+                    .size(14.dp),
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
