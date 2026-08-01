@@ -15,8 +15,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -25,10 +23,8 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Gamepad
-import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -68,6 +64,7 @@ import com.gamevault.app.domain.source.GameSource
 import com.gamevault.app.domain.source.SearchResult
 import com.gamevault.app.domain.source.SourceManager
 import com.gamevault.app.domain.source.SourceResult
+import com.gamevault.app.ui.detail.GameDetailScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -284,12 +281,13 @@ fun SourceBrowseScreen(
 
     val game = detailGame
     if (game != null) {
-        // Mihon-style detail: full screen mirroring GameDetailScreen's header
-        // (cover 3:4 + title/meta), description card, and Add to library.
-        SourceGameDetailView(
-            game = game,
+        // Reuse the library's detail screen in preview mode (same window as a
+        // saved game, minus save-only sections) — Mihon-style.
+        GameDetailScreen(
+            viewModel = null,
+            previewGame = game,
             sourceName = source.name,
-            adding = adding,
+            addingToLibrary = adding,
             onAddToLibrary = {
                 scope.launch {
                     adding = true
@@ -309,142 +307,6 @@ fun SourceBrowseScreen(
             onBack = { if (!adding) detailGame = null },
         )
         return
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun SourceGameDetailView(
-    game: Game,
-    sourceName: String,
-    adding: Boolean,
-    onAddToLibrary: () -> Unit,
-    onBack: () -> Unit,
-) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(game.title) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { innerPadding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            // Header: cover + basic info (mirrors GameDetailScreen.GameHeader,
-            // minus rating/status which only apply to saved games).
-            item {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Card(
-                        modifier = Modifier
-                            .width(120.dp)
-                            .aspectRatio(3f / 4f),
-                        shape = RoundedCornerShape(12.dp),
-                    ) {
-                        if (game.coverUrl != null) {
-                            AsyncImage(
-                                model = game.coverUrl,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop,
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Icon(
-                                    Icons.Outlined.Gamepad,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(40.dp),
-                                )
-                            }
-                        }
-                    }
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = game.title,
-                            style = MaterialTheme.typography.titleLarge,
-                        )
-                        if (game.developer != null) {
-                            Text(
-                                text = game.developer,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        if (game.engine != null) {
-                            Text(
-                                text = game.engine.displayName,
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.tertiary,
-                            )
-                        }
-                        Text(
-                            text = sourceName,
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            // Description
-            item {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text("About", style = MaterialTheme.typography.titleSmall)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = game.description ?: "No description available.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            }
-
-            // Add to library
-            item {
-                Button(
-                    onClick = onAddToLibrary,
-                    enabled = !adding,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (adding) "Adding..." else "Add to library")
-                }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(32.dp))
-            }
-        }
     }
 }
 

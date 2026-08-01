@@ -58,6 +58,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.RouteStatus
@@ -65,12 +66,30 @@ import com.gamevault.app.domain.model.RouteStatus
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GameDetailScreen(
-    viewModel: GameDetailViewModel,
+    viewModel: GameDetailViewModel?,
     onBack: () -> Unit,
     onDeleted: (() -> Unit)? = null,
+    previewGame: Game? = null,
+    sourceName: String? = null,
+    addingToLibrary: Boolean = false,
+    onAddToLibrary: (() -> Unit)? = null,
 ) {
-    val uiState by viewModel.uiState.collectAsState()
-    var notesEditText by remember { mutableStateOf("") }
+    // Browse preview mode: same screen chrome, only preview-relevant sections
+    // (header, About, Add to library, source info). No viewModel — the game is
+    // not saved yet.
+    if (previewGame != null) {
+        GameDetailPreviewContent(
+            game = previewGame,
+            sourceName = sourceName ?: "",
+            addingToLibrary = addingToLibrary,
+            onAddToLibrary = onAddToLibrary,
+            onBack = onBack,
+        )
+        return
+    }
+
+    // Saved-game mode: the caller must provide a viewModel.
+    val uiState by viewModel!!.uiState.collectAsState()
 
     Scaffold(
         topBar = {
@@ -117,9 +136,13 @@ fun GameDetailScreen(
                 item {
                     GameHeader(
                         game = game,
-                        onStatusChange = viewModel::updateGameStatus,
                         onRatingChange = viewModel::updatePersonalRating,
                     )
+                }
+
+                // Description (Mihon parity — was missing from the detail screen)
+                item {
+                    AboutSection(game = game)
                 }
 
                 // Status selector
@@ -290,8 +313,8 @@ fun GameDetailScreen(
 @Composable
 private fun GameHeader(
     game: com.gamevault.app.domain.model.Game,
-    onStatusChange: (GameStatus) -> Unit,
-    onRatingChange: (Float) -> Unit,
+    onRatingChange: ((Float) -> Unit)? = null,
+    sourceName: String? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -346,12 +369,22 @@ private fun GameHeader(
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (sourceName != null) {
+                Text(
+                    text = sourceName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
 
-            RatingBar(
-                rating = game.personalRating ?: 0f,
-                onRatingChange = onRatingChange,
-            )
+            if (onRatingChange != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                RatingBar(
+                    rating = game.personalRating ?: 0f,
+                    onRatingChange = onRatingChange,
+                )
+            }
         }
     }
 }
@@ -641,9 +674,10 @@ private fun SourceInfo(game: com.gamevault.app.domain.model.Game) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (game.f95Url != null) {
+            val sourceLink = game.f95Url ?: game.sourceUrl
+            if (sourceLink != null) {
                 Text(
-                    text = game.f95Url,
+                    text = sourceLink,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
@@ -658,4 +692,91 @@ private fun formatPlayTime(minutes: Long): String {
     val hours = minutes / 60
     val mins = minutes % 60
     return if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GameDetailPreviewContent(
+    game: com.gamevault.app.domain.model.Game,
+    sourceName: String,
+    addingToLibrary: Boolean,
+    onAddToLibrary: (() -> Unit)?,
+    onBack: () -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(game.title) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            // Header: cover + title/developer/engine/source (no rating).
+            item {
+                GameHeader(game = game, sourceName = sourceName)
+            }
+
+            // Description
+            item {
+                AboutSection(game = game)
+            }
+
+            // Source info
+            item {
+                SourceInfo(game = game)
+            }
+
+            // Add to library (Mihon-style primary action).
+            item {
+                Button(
+                    onClick = { onAddToLibrary?.invoke() },
+                    enabled = !addingToLibrary,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp),
+                ) {
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (addingToLibrary) "Adding..." else "Add to library")
+                }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(32.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AboutSection(game: com.gamevault.app.domain.model.Game) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("About", style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = game.description ?: "No description available.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }
