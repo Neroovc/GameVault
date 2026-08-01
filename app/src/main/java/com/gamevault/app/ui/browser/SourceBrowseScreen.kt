@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.repository.GameRepository
 import com.gamevault.app.domain.source.GameSource
@@ -107,8 +108,15 @@ fun SourceBrowseScreen(
     var detailLoadingUrl by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
+    var allCollections by remember { mutableStateOf(emptyList<Collection>()) }
+    var defaultCollectionIds by remember { mutableStateOf(emptyList<Long>()) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    LaunchedEffect(Unit) {
+        allCollections = gameRepository.getAllCollections()
+        appSettings.defaultCollectionId.first()?.let { defaultCollectionIds = listOf(it) }
+    }
 
     // Screen-level cache of lazily fetched covers: url -> cover (null = fetched
     // and failed, so we never retry within this screen session).
@@ -288,20 +296,31 @@ fun SourceBrowseScreen(
             previewGame = game,
             sourceName = source.name,
             addingToLibrary = adding,
-            onAddToLibrary = {
+            allCollections = allCollections,
+            initialCollectionIds = defaultCollectionIds,
+            onAddToLibrary = { collectionIds ->
                 scope.launch {
-                    adding = true
-                    // Mirror AddGameViewModel.saveGame() exactly:
-                    // saveGame returns the new row id, then the game lands in
-                    // the default collection if one is set.
-                    val savedId = gameRepository.saveGame(game)
-                    val defaultCollectionId = appSettings.defaultCollectionId.first()
-                    if (defaultCollectionId != null) {
-                        gameRepository.addGameToCollection(savedId, defaultCollectionId)
+                    try {
+                        adding = true
+                        // Dedup guard: f95_url is UNIQUE and insertGame uses
+                        // REPLACE, so re-adding a scraped game would delete the
+                        // existing row and cascade its children (routes, play
+                        // sessions, cross-refs, notes, status, rating).
+                        val existing = game.f95Url?.let { gameRepository.getGameBySourceUrl(it) }
+                            ?: game.sourceUrl?.let { gameRepository.getGameBySourceUrl(it) }
+                        if (existing != null) {
+                            snackbarMessage = "Already in library"
+                            return@launch
+                        }
+                        // saveGame returns the new row id, then the game lands in
+                        // the chosen collections (default collection pre-checked).
+                        val savedId = gameRepository.saveGame(game)
+                        collectionIds.forEach { id -> gameRepository.addGameToCollection(savedId, id) }
+                        snackbarMessage = "Added to library"
+                    } finally {
+                        adding = false
+                        detailGame = null
                     }
-                    adding = false
-                    detailGame = null
-                    snackbarMessage = "Added to library"
                 }
             },
             onBack = { if (!adding) detailGame = null },

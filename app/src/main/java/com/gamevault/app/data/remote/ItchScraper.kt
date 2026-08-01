@@ -3,6 +3,7 @@ package com.gamevault.app.data.remote
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.SourceType
+import com.gamevault.app.domain.model.Tag
 import com.gamevault.app.domain.source.SearchResult
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -26,6 +27,7 @@ class ItchScraper {
             "(KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
         private const val TIMEOUT_MS = 30_000L
         private const val BASE_URL = "https://itch.io"
+        private const val MAX_TAGS = 12
     }
 
     /**
@@ -90,6 +92,7 @@ class ItchScraper {
                     f95Rating = null,
                     sourceType = SourceType.ITCHIO,
                     sourceUrl = url,
+                    tags = extractTags(doc),
                 ),
                 threadId = null,
             )
@@ -183,6 +186,14 @@ class ItchScraper {
         }
 
         return null
+    }
+
+    private fun extractTags(doc: Document): List<Tag> {
+        val tagNames = doc.select("div.game_tags a[href*='/tag/']")
+            .mapNotNull { it.text().trim().takeIf { name -> name.isNotBlank() } }
+            .distinct()
+            .take(MAX_TAGS)
+        return tagNames.map { Tag(name = it) }
     }
 
     /**

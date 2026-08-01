@@ -4,6 +4,7 @@ import com.gamevault.app.data.local.dao.CollectionDao
 import com.gamevault.app.data.local.dao.GameCollectionDao
 import com.gamevault.app.data.local.dao.GameDao
 import com.gamevault.app.data.local.dao.GameRouteDao
+import com.gamevault.app.data.local.dao.GameTagDao
 import com.gamevault.app.data.local.dao.PlaySessionDao
 import com.gamevault.app.data.local.dao.TagDao
 import com.gamevault.app.data.local.entity.GameCollectionCrossRef
@@ -30,6 +31,7 @@ class GameRepositoryImpl(
     private val tagDao: TagDao,
     private val collectionDao: CollectionDao,
     private val gameCollectionDao: GameCollectionDao,
+    private val gameTagDao: GameTagDao,
 ) : GameRepository {
 
     // ── Games ──────────────────────────────────────────────
@@ -52,6 +54,9 @@ class GameRepositoryImpl(
     override suspend fun getGameById(gameId: Long): Game? =
         gameDao.getGameById(gameId)?.toDomainModel()
 
+    override suspend fun getGameBySourceUrl(url: String): Game? =
+        gameDao.getGameBySourceUrl(url)?.toDomainModel()
+
     override suspend fun saveGame(game: Game): Long {
         val gameId = gameDao.insertGame(game.toEntity())
 
@@ -60,10 +65,14 @@ class GameRepositoryImpl(
             routeDao.insertRoute(route.copy(gameId = gameId).toEntity())
         }
 
-        // Save tags
+        // Save tags and link them to the game via cross-ref. insertTag uses
+        // IGNORE, so an existing tag is a no-op — the name lookup resolves the
+        // authoritative id in both cases (inserted or pre-existing).
         game.tags.forEach { tag ->
-            val tagId = tagDao.insertTag(tag.toEntity())
-            // Link tag to game via cross-ref is handled if needed
+            tagDao.insertTag(tag.toEntity())
+            tagDao.getTagByName(tag.name)?.let { found ->
+                gameTagDao.insert(GameTagCrossRef(gameId = gameId, tagId = found.id))
+            }
         }
 
         return gameId
@@ -71,6 +80,10 @@ class GameRepositoryImpl(
 
     override suspend fun updateGame(game: Game) {
         gameDao.updateGame(game.toEntity())
+    }
+
+    override suspend fun updateGamePlayTime(gameId: Long, minutes: Long) {
+        gameDao.updatePlayTimeMinutes(gameId, minutes)
     }
 
     override suspend fun deleteGame(gameId: Long) {

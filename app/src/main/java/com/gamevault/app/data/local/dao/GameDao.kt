@@ -65,6 +65,12 @@ interface GameDao {
     @Query("UPDATE games SET status = :status WHERE id IN (:gameIds)")
     suspend fun updateGameStatusBulk(gameIds: List<Long>, status: String)
 
+    @Query("UPDATE games SET play_time_minutes = :minutes WHERE id = :gameId")
+    suspend fun updatePlayTimeMinutes(gameId: Long, minutes: Long)
+
+    @Query("SELECT * FROM games WHERE f95_url = :url OR source_url = :url LIMIT 1")
+    suspend fun getGameBySourceUrl(url: String): GameEntity?
+
     @Query("DELETE FROM games WHERE id IN (:gameIds)")
     suspend fun deleteGamesBulk(gameIds: List<Long>)
 }

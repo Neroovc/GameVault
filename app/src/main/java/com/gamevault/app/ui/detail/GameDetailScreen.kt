@@ -1,5 +1,9 @@
 package com.gamevault.app.ui.detail
 
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,15 +19,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.StarBorder
@@ -35,13 +44,14 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,9 +65,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
 import com.gamevault.app.domain.model.GameStatus
@@ -72,16 +85,20 @@ fun GameDetailScreen(
     previewGame: Game? = null,
     sourceName: String? = null,
     addingToLibrary: Boolean = false,
-    onAddToLibrary: (() -> Unit)? = null,
+    allCollections: List<Collection> = emptyList(),
+    initialCollectionIds: List<Long> = emptyList(),
+    onAddToLibrary: ((List<Long>) -> Unit)? = null,
 ) {
     // Browse preview mode: same screen chrome, only preview-relevant sections
-    // (header, About, Add to library, source info). No viewModel — the game is
+    // (header, quick actions, About, genres). No viewModel — the game is
     // not saved yet.
     if (previewGame != null) {
         GameDetailPreviewContent(
             game = previewGame,
             sourceName = sourceName ?: "",
             addingToLibrary = addingToLibrary,
+            allCollections = allCollections,
+            initialCollectionIds = initialCollectionIds,
             onAddToLibrary = onAddToLibrary,
             onBack = onBack,
         )
@@ -90,6 +107,7 @@ fun GameDetailScreen(
 
     // Saved-game mode: the caller must provide a viewModel.
     val uiState by viewModel!!.uiState.collectAsState()
+    var showTimeDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -140,9 +158,27 @@ fun GameDetailScreen(
                     )
                 }
 
+                // Quick actions: library status, manual play time, soon, web
+                item {
+                    DetailActionRow(
+                        game = game,
+                        isSaved = true,
+                        addingToLibrary = false,
+                        onAddToLibrary = viewModel::showCollectionPicker,
+                        onAdjustTime = { showTimeDialog = true },
+                    )
+                }
+
                 // Description (Mihon parity — was missing from the detail screen)
                 item {
                     AboutSection(game = game)
+                }
+
+                // Scraped genre tags
+                if (game.tags.isNotEmpty()) {
+                    item {
+                        GenresRow(tags = game.tags)
+                    }
                 }
 
                 // Status selector
@@ -193,11 +229,6 @@ fun GameDetailScreen(
                         notes = game.notes,
                         onEdit = viewModel::showEditNotes,
                     )
-                }
-
-                // Source info
-                item {
-                    SourceInfo(game = game)
                 }
 
                 // Bottom spacer
@@ -252,6 +283,18 @@ fun GameDetailScreen(
                     Text("Done")
                 }
             },
+        )
+    }
+
+    // Manual play time dialog
+    if (showTimeDialog) {
+        ManualTimeDialog(
+            currentMinutes = uiState.game?.playTimeMinutes ?: 0L,
+            onConfirm = { minutes ->
+                showTimeDialog = false
+                viewModel.setManualPlayTime(minutes)
+            },
+            onDismiss = { showTimeDialog = false },
         )
     }
 
@@ -660,34 +703,6 @@ private fun NotesSection(
     }
 }
 
-@Composable
-private fun SourceInfo(game: com.gamevault.app.domain.model.Game) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Source", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "${game.sourceType.displayName} · ${game.version ?: "N/A"}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val sourceLink = game.f95Url ?: game.sourceUrl
-            if (sourceLink != null) {
-                Text(
-                    text = sourceLink,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
 private fun formatPlayTime(minutes: Long): String {
     val hours = minutes / 60
     val mins = minutes % 60
@@ -700,9 +715,14 @@ private fun GameDetailPreviewContent(
     game: com.gamevault.app.domain.model.Game,
     sourceName: String,
     addingToLibrary: Boolean,
-    onAddToLibrary: (() -> Unit)?,
+    allCollections: List<Collection>,
+    initialCollectionIds: List<Long>,
+    onAddToLibrary: ((List<Long>) -> Unit)?,
     onBack: () -> Unit,
 ) {
+    var pickerOpen by remember { mutableStateOf(false) }
+    var checkedIds by remember { mutableStateOf(initialCollectionIds.toSet()) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -727,32 +747,32 @@ private fun GameDetailPreviewContent(
                 GameHeader(game = game, sourceName = sourceName)
             }
 
+            // Quick actions: add to library, play time (disabled), soon (disabled), web
+            item {
+                DetailActionRow(
+                    game = game,
+                    isSaved = false,
+                    addingToLibrary = addingToLibrary,
+                    onAddToLibrary = {
+                        if (allCollections.isEmpty()) {
+                            onAddToLibrary?.invoke(emptyList())
+                        } else {
+                            pickerOpen = true
+                        }
+                    },
+                    onAdjustTime = null,
+                )
+            }
+
             // Description
             item {
                 AboutSection(game = game)
             }
 
-            // Source info
-            item {
-                SourceInfo(game = game)
-            }
-
-            // Add to library (Mihon-style primary action).
-            item {
-                Button(
-                    onClick = { onAddToLibrary?.invoke() },
-                    enabled = !addingToLibrary,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp),
-                ) {
-                    Icon(
-                        Icons.Default.Add,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (addingToLibrary) "Adding..." else "Add to library")
+            // Scraped genre tags
+            if (game.tags.isNotEmpty()) {
+                item {
+                    GenresRow(tags = game.tags)
                 }
             }
 
@@ -761,22 +781,239 @@ private fun GameDetailPreviewContent(
             }
         }
     }
+
+    // Collection picker for the add-to-library flow
+    if (pickerOpen) {
+        PreviewCollectionPicker(
+            collections = allCollections,
+            checkedIds = checkedIds,
+            onCheckedChange = { id, checked ->
+                checkedIds = if (checked) checkedIds + id else checkedIds - id
+            },
+            onConfirm = {
+                pickerOpen = false
+                onAddToLibrary?.invoke(checkedIds.toList())
+            },
+            onDismiss = { pickerOpen = false },
+        )
+    }
 }
 
 @Composable
 private fun AboutSection(game: com.gamevault.app.domain.model.Game) {
+    var expanded by remember { mutableStateOf(false) }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("About", style = MaterialTheme.typography.titleSmall)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .animateContentSize()
+                .padding(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text("About", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    text = if (expanded) "Show less" else "Show more",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = game.description ?: "No description available.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = if (expanded) Int.MAX_VALUE else 3,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
+}
+
+@Composable
+private fun DetailActionRow(
+    game: com.gamevault.app.domain.model.Game,
+    isSaved: Boolean,
+    addingToLibrary: Boolean,
+    onAddToLibrary: () -> Unit,
+    onAdjustTime: (() -> Unit)?,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        ActionButton(
+            icon = {
+                Icon(
+                    if (isSaved) Icons.Default.Check else Icons.Default.Add,
+                    contentDescription = null,
+                )
+            },
+            label = if (isSaved) "In library" else if (addingToLibrary) "Adding..." else "Add to library",
+            enabled = if (isSaved) true else !addingToLibrary,
+            onClick = onAddToLibrary,
+        )
+        ActionButton(
+            icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+            label = "Play time",
+            enabled = onAdjustTime != null,
+            onClick = { onAdjustTime?.invoke() },
+        )
+        ActionButton(
+            icon = { Icon(Icons.Default.Bookmark, contentDescription = null) },
+            label = "Soon",
+            enabled = false,
+            onClick = {},
+        )
+        val url = game.f95Url ?: game.sourceUrl
+        val context = LocalContext.current
+        ActionButton(
+            icon = { Icon(Icons.Default.Public, contentDescription = null) },
+            label = "Web",
+            enabled = url != null,
+            onClick = {
+                if (url != null) {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ActionButton(
+    icon: @Composable () -> Unit,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
+    ) {
+        FilledTonalIconButton(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = Modifier.size(44.dp),
+        ) {
+            icon()
+        }
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline,
+        )
+    }
+}
+
+@Composable
+private fun GenresRow(tags: List<com.gamevault.app.domain.model.Tag>) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(tags, key = { it.name }) { tag ->
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ) {
+                Text(
+                    text = tag.name,
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ManualTimeDialog(
+    currentMinutes: Long,
+    onConfirm: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var hoursText by remember { mutableStateOf((currentMinutes / 60).toString()) }
+    var minutesText by remember { mutableStateOf((currentMinutes % 60).toString()) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Adjust play time") },
+        text = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = hoursText,
+                    onValueChange = { input -> hoursText = input.filter { it.isDigit() }.take(3) },
+                    label = { Text("Hours") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                Text("h")
+                OutlinedTextField(
+                    value = minutesText,
+                    onValueChange = { input -> minutesText = input.filter { it.isDigit() }.take(2) },
+                    label = { Text("Minutes") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                Text("min")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val hours = hoursText.toIntOrNull() ?: 0
+                val mins = minutesText.toIntOrNull() ?: 0
+                onConfirm(hours * 60L + mins)
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun PreviewCollectionPicker(
+    collections: List<com.gamevault.app.domain.model.Collection>,
+    checkedIds: Set<Long>,
+    onCheckedChange: (Long, Boolean) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add to library") },
+        text = {
+            Column {
+                if (collections.isEmpty()) {
+                    Text("No collections yet. The game will be added to your library.")
+                } else {
+                    collections.forEach { collection ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onCheckedChange(collection.id, collection.id !in checkedIds) },
+                        ) {
+                            Checkbox(
+                                checked = collection.id in checkedIds,
+                                onCheckedChange = { onCheckedChange(collection.id, it) },
+                            )
+                            Text(collection.name)
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text("Done") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }

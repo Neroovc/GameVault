@@ -3,6 +3,7 @@ package com.gamevault.app.data.remote
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.SourceType
+import com.gamevault.app.domain.model.Tag
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -22,6 +23,7 @@ class F95ZoneScraper {
             "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
         private const val TIMEOUT_MS = 30_000L
+        private const val MAX_TAGS = 12
     }
 
     /**
@@ -47,6 +49,7 @@ class F95ZoneScraper {
                     f95Rating = extractRating(doc),
                     sourceType = SourceType.F95ZONE,
                     sourceUrl = url,
+                    tags = extractTags(doc),
                 ),
                 threadId = threadId,
             )
@@ -246,6 +249,14 @@ class F95ZoneScraper {
         return widthMatch?.groupValues?.get(1)?.toFloatOrNull()
             ?.let { (it / 100) * 5 }
             ?.let { (it * 2).toInt() / 2f }
+    }
+
+    private fun extractTags(doc: Document): List<Tag> {
+        val tagNames = doc.select("a.tagItem, a[href*='/tags/']")
+            .mapNotNull { it.text().trim().takeIf { name -> name.isNotBlank() && !name.contains("Create new tag") } }
+            .distinct()
+            .take(MAX_TAGS)
+        return tagNames.map { Tag(name = it) }
     }
 
     private fun extractThreadId(url: String): String? {

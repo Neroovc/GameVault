@@ -33,7 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -439,7 +439,8 @@ private fun formatPlayTime(minutes: Long): String {
     }
 }
 
-private fun Modifier.statusStrip(color: Color): Modifier = drawBehind {
+private fun Modifier.statusStrip(color: Color): Modifier = drawWithContent {
+    drawContent()
     drawRect(
         color = color,
         topLeft = Offset.Zero,

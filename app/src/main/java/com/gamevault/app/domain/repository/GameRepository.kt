@@ -23,8 +23,10 @@ interface GameRepository {
 
     suspend fun getAllGames(): List<Game>
     suspend fun getGameById(gameId: Long): Game?
+    suspend fun getGameBySourceUrl(url: String): Game?
     suspend fun saveGame(game: Game): Long
     suspend fun updateGame(game: Game)
+    suspend fun updateGamePlayTime(gameId: Long, minutes: Long)
     suspend fun deleteGame(gameId: Long)
     suspend fun getGameCount(): Int
 

@@ -128,6 +128,12 @@ class GameDetailViewModel(
         }
     }
 
+    fun setManualPlayTime(minutes: Long) {
+        viewModelScope.launch {
+            repository.updateGamePlayTime(gameId, minutes)
+        }
+    }
+
     fun startPlaySession() {
         viewModelScope.launch {
             repository.saveSession(
@@ -141,15 +147,16 @@ class GameDetailViewModel(
 
     fun endPlaySession(sessionId: Long) {
         viewModelScope.launch {
-            val session = uiState.value.sessions.find { it.id == sessionId } ?: return@launch
+            val sessions = uiState.value.sessions
+            val session = sessions.find { it.id == sessionId } ?: return@launch
             val now = System.currentTimeMillis()
             val duration = (now - session.startTime) / 60_000
-            repository.updateSession(
-                session.copy(
-                    endTime = now,
-                    durationMinutes = duration,
-                )
-            )
+            val ended = session.copy(endTime = now, durationMinutes = duration)
+            repository.updateSession(ended)
+
+            val updatedSessions = sessions.map { if (it.id == sessionId) ended else it }
+            val newTotal = updatedSessions.sumOf { it.durationMinutes ?: 0L }
+            repository.updateGamePlayTime(gameId, newTotal)
         }
     }
 
