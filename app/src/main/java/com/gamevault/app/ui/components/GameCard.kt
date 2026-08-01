@@ -33,6 +33,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -51,7 +54,6 @@ import com.gamevault.app.domain.model.SourceType
 
 private val cardShape = RoundedCornerShape(12.dp)
 private val statusStripWidth = 4.dp
-private val statusStripShape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -80,7 +82,7 @@ fun GameCard(
             containerColor = Color.Transparent,
         ),
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.fillMaxSize().then(if (showStatus) Modifier.statusStrip(statusColor(game.status)) else Modifier)) {
             if (gridMode == GridMode.LIST) {
                 ListContent(game, isSelected)
             } else {
@@ -89,17 +91,6 @@ fun GameCard(
                     isSelected = isSelected,
                     isCompact = gridMode == GridMode.COMPACT,
                     showEngineSource = showEngineSource,
-                )
-            }
-
-            // Status strip (Mihon style) — colored left edge of the card.
-            if (showStatus) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .width(statusStripWidth)
-                        .fillMaxHeight()
-                        .background(statusColor(game.status), statusStripShape),
                 )
             }
         }
@@ -446,6 +437,14 @@ private fun formatPlayTime(minutes: Long): String {
         h > 0 -> "${h}h"
         else -> "${m}m"
     }
+}
+
+private fun Modifier.statusStrip(color: Color): Modifier = drawBehind {
+    drawRect(
+        color = color,
+        topLeft = Offset.Zero,
+        size = Size(statusStripWidth.toPx(), size.height),
+    )
 }
 
 @Composable

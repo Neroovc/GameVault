@@ -432,7 +432,7 @@ private val SheetMaxHeight = 520.dp
 private val SheetTabLabels = listOf("Filter", "Sort", "Appearance", "Group")
 
 @Composable
-private fun SheetPageScaffold(
+private fun SheetPageColumn(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -452,7 +452,7 @@ private fun FilterTab(
     selectedCollectionId: Long?,
     onCollectionChanged: (Long?) -> Unit,
 ) {
-    SheetPageScaffold {
+    SheetPageColumn {
         StatusChipsRow(selected = selectedStatus, onSelected = onStatusChanged)
         if (collections.isNotEmpty()) {
             Spacer(modifier = Modifier.height(16.dp))
@@ -470,7 +470,7 @@ private fun SortTab(
     current: SortOrder,
     onSelected: (SortOrder) -> Unit,
 ) {
-    SheetPageScaffold {
+    SheetPageColumn {
         SortOrder.entries.forEach { order ->
             Row(
                 modifier = Modifier
@@ -502,7 +502,7 @@ private fun AppearanceTab(
     showStatus: Boolean,
     onShowStatusChanged: (Boolean) -> Unit,
 ) {
-    SheetPageScaffold {
+    SheetPageColumn {
         SectionLabel("Grid mode")
         Spacer(modifier = Modifier.height(8.dp))
         Row(
@@ -537,7 +537,7 @@ private fun GroupTab(
     current: GroupBy,
     onSelected: (GroupBy) -> Unit,
 ) {
-    SheetPageScaffold {
+    SheetPageColumn {
         GroupOptions(current = current, onSelected = onSelected)
     }
 }
@@ -548,6 +548,8 @@ private fun OverlayToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    var localChecked by remember { mutableStateOf(checked) }
+    LaunchedEffect(checked) { localChecked = checked }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -556,7 +558,13 @@ private fun OverlayToggleRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = MaterialTheme.typography.bodyLarge)
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(
+            checked = localChecked,
+            onCheckedChange = { newValue ->
+                localChecked = newValue
+                onCheckedChange(newValue)
+            },
+        )
     }
 }
 

@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
@@ -129,17 +130,22 @@ class LibraryViewModel(
                         (params.collectionId == null || game.collections.any { it.id == params.collectionId })
                 }
             }
-            params.collectionId != null -> repository.observeGamesInCollection(params.collectionId)
+            params.collectionId != null -> repository.observeGamesInCollection(params.collectionId).map { games ->
+                if (params.status == GameStatusFilter.ALL) games
+                else games.filter { it.status.name == params.status.name }
+            }
             params.status == GameStatusFilter.ALL -> repository.observeAllGames()
             else -> repository.observeGamesByStatus(
                 com.gamevault.app.domain.model.GameStatus.valueOf(params.status.name)
             )
         }
         source.map { games -> sortGames(games, params.sort) }
+            .catch { emit(emptyList<Game>()) }
             .map { sortedGames ->
                 LibraryUiState(
                     games = sortedGames,
-                    searchQuery = _searchQuery.value,
+                    // searchQuery is overridden by the outer combine with the raw (undebounced) value
+                    searchQuery = "",
                     isLoading = false,
                     selectedStatus = _selectedStatus.value,
                     sortOrder = _sortOrder.value,
@@ -158,11 +164,13 @@ class LibraryViewModel(
         _gridMode,
         appSettings.showEngineSource,
         appSettings.showStatus,
-    ) { state, mode, showEngineSource, showStatus ->
+        _searchQuery,
+    ) { state, mode, showEngineSource, showStatus, rawQuery ->
         state.copy(
             gridMode = mode,
             showEngineSource = showEngineSource,
             showStatus = showStatus,
+            searchQuery = rawQuery,
         )
     }.stateIn(
         scope = viewModelScope,
