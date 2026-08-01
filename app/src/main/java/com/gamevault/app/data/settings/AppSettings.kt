@@ -45,6 +45,8 @@ class AppSettings(private val context: Context) {
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
         val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
         val GRID_MODE = intPreferencesKey("grid_mode")
+        val SHOW_ENGINE_SOURCE = booleanPreferencesKey("show_engine_source")
+        val SHOW_STATUS = booleanPreferencesKey("show_status")
         val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
         val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
@@ -95,6 +97,30 @@ class AppSettings(private val context: Context) {
     suspend fun setGridMode(mode: GridMode) {
         context.dataStore.edit { prefs ->
             prefs[Keys.GRID_MODE] = mode.value
+        }
+    }
+
+    /** Observe whether the engine & source badge is shown on library cards. Defaults to true. */
+    val showEngineSource: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SHOW_ENGINE_SOURCE] ?: true
+    }
+
+    /** Persist the engine & source badge visibility. */
+    suspend fun setShowEngineSource(value: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SHOW_ENGINE_SOURCE] = value
+        }
+    }
+
+    /** Observe whether the status strip is shown on library cards. Defaults to true. */
+    val showStatus: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SHOW_STATUS] ?: true
+    }
+
+    /** Persist the status strip visibility. */
+    suspend fun setShowStatus(value: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SHOW_STATUS] = value
         }
     }
 

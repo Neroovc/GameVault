@@ -1,15 +1,18 @@
 package com.gamevault.app.ui.library
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -17,10 +20,13 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -43,9 +49,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -59,6 +66,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -76,6 +85,7 @@ import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,7 +101,7 @@ fun LibraryScreen(
     val selectedIds by selectionViewModel.selectedGameIds.collectAsState()
     val isSelectionMode by selectionViewModel.isSelectionMode.collectAsState()
     val selectedCount by selectionViewModel.selectedCount.collectAsState()
-    var searchExpanded by remember { mutableStateOf(false) }
+    var searchExpanded by rememberSaveable { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     LaunchedEffect(searchExpanded) {
@@ -202,8 +212,8 @@ fun LibraryScreen(
         },
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Collection chips row (always visible above the grid)
-            if (collections.isNotEmpty()) {
+            // Collection chips row (hidden while searching — search takes over the list)
+            if (collections.isNotEmpty() && uiState.searchQuery.isBlank()) {
                 CollectionChipsRow(
                     collections = collections,
                     selectedId = uiState.selectedCollectionId,
@@ -259,6 +269,8 @@ fun LibraryScreen(
                                             game = item.game,
                                             isSelected = item.game.id in selectedIds,
                                             gridMode = uiState.gridMode,
+                                            showEngineSource = uiState.showEngineSource,
+                                            showStatus = uiState.showStatus,
                                             onClick = {
                                                 if (isSelectionMode) {
                                                     selectionViewModel.toggleSelection(item.game.id)
@@ -291,6 +303,8 @@ fun LibraryScreen(
             onSortChanged = viewModel::onSortOrderChanged,
             onGroupChanged = viewModel::onGroupByChanged,
             onGridModeChanged = viewModel::onGridModeChanged,
+            onShowEngineSourceChanged = viewModel::onShowEngineSourceChanged,
+            onShowStatusChanged = viewModel::onShowStatusChanged,
         )
     }
 
@@ -352,8 +366,11 @@ private fun FilterSortSheet(
     onSortChanged: (SortOrder) -> Unit,
     onGroupChanged: (GroupBy) -> Unit,
     onGridModeChanged: (GridMode) -> Unit,
+    onShowEngineSourceChanged: (Boolean) -> Unit,
+    onShowStatusChanged: (Boolean) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val scope = rememberCoroutineScope()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -362,65 +379,184 @@ private fun FilterSortSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .heightIn(max = SheetMaxHeight),
         ) {
             Text(
-                "Filter & Sort",
+                "Library settings",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
             )
 
-            // ── Section: Filter ──────────────────────────────
-            SectionLabel("Filter")
-            StatusChipsRow(
-                selected = uiState.selectedStatus,
-                onSelected = onStatusChanged,
-            )
-            if (collections.isNotEmpty()) {
-                CollectionChipsRow(
-                    collections = collections,
-                    selectedId = uiState.selectedCollectionId,
-                    onSelected = onCollectionChanged,
-                )
+            val pagerState = rememberPagerState(pageCount = { SheetTabLabels.size })
+            TabRow(selectedTabIndex = pagerState.currentPage) {
+                SheetTabLabels.forEachIndexed { index, label ->
+                    Tab(
+                        selected = pagerState.currentPage == index,
+                        onClick = { scope.launch { pagerState.animateScrollToPage(index) } },
+                        text = { Text(label) },
+                    )
+                }
             }
-
-            HorizontalDivider()
-
-            // ── Section: Sort ────────────────────────────────
-            SectionLabel("Sort")
-            SortOptions(
-                current = uiState.sortOrder,
-                onSelected = onSortChanged,
-            )
-
-            HorizontalDivider()
-
-            // ── Section: Group ───────────────────────────────
-            SectionLabel("Group")
-            GroupOptions(
-                current = uiState.groupBy,
-                onSelected = onGroupChanged,
-            )
-
-            HorizontalDivider()
-
-            // ── Section: Appearance ────────────────────────────
-            SectionLabel("Appearance")
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GridMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = uiState.gridMode == mode,
-                        onClick = { onGridModeChanged(mode) },
-                        label = { Text(mode.displayName, style = MaterialTheme.typography.labelSmall) },
+            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxWidth()) { page ->
+                when (page) {
+                    0 -> FilterTab(
+                        selectedStatus = uiState.selectedStatus,
+                        onStatusChanged = onStatusChanged,
+                        collections = collections,
+                        selectedCollectionId = uiState.selectedCollectionId,
+                        onCollectionChanged = onCollectionChanged,
+                    )
+                    1 -> SortTab(
+                        current = uiState.sortOrder,
+                        onSelected = onSortChanged,
+                    )
+                    2 -> AppearanceTab(
+                        gridMode = uiState.gridMode,
+                        onGridModeChanged = onGridModeChanged,
+                        showEngineSource = uiState.showEngineSource,
+                        onShowEngineSourceChanged = onShowEngineSourceChanged,
+                        showStatus = uiState.showStatus,
+                        onShowStatusChanged = onShowStatusChanged,
+                    )
+                    3 -> GroupTab(
+                        current = uiState.groupBy,
+                        onSelected = onGroupChanged,
                     )
                 }
             }
         }
+    }
+}
+
+private val SheetMaxHeight = 520.dp
+private val SheetTabLabels = listOf("Filter", "Sort", "Appearance", "Group")
+
+@Composable
+private fun SheetPageScaffold(
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        content = content,
+    )
+}
+
+@Composable
+private fun FilterTab(
+    selectedStatus: GameStatusFilter,
+    onStatusChanged: (GameStatusFilter) -> Unit,
+    collections: List<Collection>,
+    selectedCollectionId: Long?,
+    onCollectionChanged: (Long?) -> Unit,
+) {
+    SheetPageScaffold {
+        StatusChipsRow(selected = selectedStatus, onSelected = onStatusChanged)
+        if (collections.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            CollectionChipsRow(
+                collections = collections,
+                selectedId = selectedCollectionId,
+                onSelected = onCollectionChanged,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SortTab(
+    current: SortOrder,
+    onSelected: (SortOrder) -> Unit,
+) {
+    SheetPageScaffold {
+        SortOrder.entries.forEach { order ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onSelected(order) }
+                    .padding(vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(order.displayName, style = MaterialTheme.typography.bodyLarge)
+                if (order == current) {
+                    Icon(
+                        Icons.Default.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppearanceTab(
+    gridMode: GridMode,
+    onGridModeChanged: (GridMode) -> Unit,
+    showEngineSource: Boolean,
+    onShowEngineSourceChanged: (Boolean) -> Unit,
+    showStatus: Boolean,
+    onShowStatusChanged: (Boolean) -> Unit,
+) {
+    SheetPageScaffold {
+        SectionLabel("Grid mode")
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            GridMode.entries.forEach { mode ->
+                FilterChip(
+                    selected = gridMode == mode,
+                    onClick = { onGridModeChanged(mode) },
+                    label = { Text(mode.displayName, style = MaterialTheme.typography.labelSmall) },
+                )
+            }
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+        SectionLabel("Overlay")
+        OverlayToggleRow(
+            label = "Engine & source",
+            checked = showEngineSource,
+            onCheckedChange = onShowEngineSourceChanged,
+        )
+        OverlayToggleRow(
+            label = "Status",
+            checked = showStatus,
+            onCheckedChange = onShowStatusChanged,
+        )
+    }
+}
+
+@Composable
+private fun GroupTab(
+    current: GroupBy,
+    onSelected: (GroupBy) -> Unit,
+) {
+    SheetPageScaffold {
+        GroupOptions(current = current, onSelected = onSelected)
+    }
+}
+
+@Composable
+private fun OverlayToggleRow(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodyLarge)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
@@ -496,53 +632,6 @@ private fun CollectionChipsRow(
                 onClick = { onSelected(if (selectedId == coll.id) null else coll.id) },
                 label = { Text(coll.name, style = MaterialTheme.typography.labelSmall) },
             )
-        }
-    }
-}
-
-// ── Sort options ──────────────────────────────────────────
-
-@Composable
-private fun SortOptions(
-    current: SortOrder,
-    onSelected: (SortOrder) -> Unit,
-) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 0.dp,
-    ) {
-        Column(modifier = Modifier.padding(4.dp)) {
-            SortOrder.entries.chunked(3).forEach { row ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    row.forEach { order ->
-                        NavigationBarItem(
-                            selected = order == current,
-                            onClick = { onSelected(order) },
-                            icon = {
-                                if (order == current) {
-                                    Icon(
-                                        Icons.Default.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            },
-                            label = {
-                                Text(
-                                    order.displayName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    maxLines = 1,
-                                )
-                            },
-                            alwaysShowLabel = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                }
-            }
         }
     }
 }

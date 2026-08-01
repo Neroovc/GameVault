@@ -50,6 +50,8 @@ import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.SourceType
 
 private val cardShape = RoundedCornerShape(12.dp)
+private val statusStripWidth = 4.dp
+private val statusStripShape = RoundedCornerShape(topStart = 12.dp, bottomStart = 12.dp)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -60,6 +62,8 @@ fun GameCard(
     isSelected: Boolean = false,
     onLongClick: () -> Unit = {},
     gridMode: GridMode = GridMode.COMFORTABLE,
+    showEngineSource: Boolean = true,
+    showStatus: Boolean = true,
 ) {
     Card(
         modifier = modifier
@@ -76,10 +80,28 @@ fun GameCard(
             containerColor = Color.Transparent,
         ),
     ) {
-        if (gridMode == GridMode.LIST) {
-            ListContent(game, isSelected)
-        } else {
-            GridContent(game, isSelected, isCompact = gridMode == GridMode.COMPACT)
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (gridMode == GridMode.LIST) {
+                ListContent(game, isSelected)
+            } else {
+                GridContent(
+                    game = game,
+                    isSelected = isSelected,
+                    isCompact = gridMode == GridMode.COMPACT,
+                    showEngineSource = showEngineSource,
+                )
+            }
+
+            // Status strip (Mihon style) — colored left edge of the card.
+            if (showStatus) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .width(statusStripWidth)
+                        .fillMaxHeight()
+                        .background(statusColor(game.status), statusStripShape),
+                )
+            }
         }
     }
 }
@@ -89,6 +111,7 @@ private fun GridContent(
     game: Game,
     isSelected: Boolean,
     isCompact: Boolean,
+    showEngineSource: Boolean,
 ) {
     Column {
         // ── Cover ──
@@ -142,22 +165,16 @@ private fun GridContent(
                 )
             }
 
-            // Status badge (top-start)
-            StatusBadge(
-                status = game.status,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(6.dp),
-            )
-
-            // Engine + Source badge (top-end) — always visible
-            EngineSourceBadge(
-                engine = game.engine,
-                sourceType = game.sourceType,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(6.dp),
-            )
+            // Engine + Source badge (top-end) — gated by the overlay setting
+            if (showEngineSource) {
+                EngineSourceBadge(
+                    engine = game.engine,
+                    sourceType = game.sourceType,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                )
+            }
 
             // Rating pill (bottom-end)
             if (game.personalRating != null) {
@@ -236,14 +253,6 @@ private fun ListContent(
                     )
                 }
             }
-
-            // Status badge on thumbnail
-            StatusBadge(
-                status = game.status,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(4.dp),
-            )
 
             // Selection overlay
             if (isSelected) {
@@ -402,7 +411,7 @@ private fun BadgeIcon(
         shape = RoundedCornerShape(4.dp),
         colors = CardDefaults.cardColors(
             // Slight scrim so brand logos float over busy covers, same pill
-            // language as StatusBadge/RatingPill.
+            // language as RatingPill.
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         ),
     ) {
@@ -440,44 +449,13 @@ private fun formatPlayTime(minutes: Long): String {
 }
 
 @Composable
-private fun StatusBadge(
-    status: GameStatus,
-    modifier: Modifier = Modifier,
-) {
-    val containerColor = when (status) {
-        GameStatus.NOT_STARTED -> MaterialTheme.colorScheme.surfaceContainerHighest
-        GameStatus.PLAYING -> MaterialTheme.colorScheme.primary
-        GameStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
-        GameStatus.REPLAYING -> MaterialTheme.colorScheme.secondary
-        GameStatus.PAUSED -> MaterialTheme.colorScheme.outline
-        GameStatus.ABANDONED -> MaterialTheme.colorScheme.error
-    }
-
-    val label = when (status) {
-        GameStatus.NOT_STARTED -> "New"
-        GameStatus.PLAYING -> "Playing"
-        GameStatus.COMPLETED -> "Done"
-        GameStatus.REPLAYING -> "Replay"
-        GameStatus.PAUSED -> "Paused"
-        GameStatus.ABANDONED -> "Dropped"
-    }
-
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(4.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-    ) {
-        Text(
-            text = label,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
-            color = when (status) {
-                GameStatus.NOT_STARTED -> MaterialTheme.colorScheme.onSurface
-                else -> MaterialTheme.colorScheme.surface
-            },
-        )
-    }
+private fun statusColor(status: GameStatus): Color = when (status) {
+    GameStatus.NOT_STARTED -> MaterialTheme.colorScheme.surfaceContainerHighest
+    GameStatus.PLAYING -> MaterialTheme.colorScheme.primary
+    GameStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
+    GameStatus.REPLAYING -> MaterialTheme.colorScheme.secondary
+    GameStatus.PAUSED -> MaterialTheme.colorScheme.outline
+    GameStatus.ABANDONED -> MaterialTheme.colorScheme.error
 }
 
 @Composable

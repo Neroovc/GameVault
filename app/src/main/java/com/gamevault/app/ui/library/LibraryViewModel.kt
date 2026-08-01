@@ -9,16 +9,20 @@ import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+private const val SEARCH_DEBOUNCE_MS = 250L
 
 data class LibraryUiState(
     val games: List<Game> = emptyList(),
@@ -29,6 +33,8 @@ data class LibraryUiState(
     val selectedCollectionId: Long? = null,
     val groupBy: GroupBy = GroupBy.NONE,
     val gridMode: GridMode = GridMode.COMFORTABLE,
+    val showEngineSource: Boolean = true,
+    val showStatus: Boolean = true,
 )
 
 enum class GameStatusFilter {
@@ -106,9 +112,9 @@ class LibraryViewModel(
         val collectionId: Long?,
     )
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     private val queryState: StateFlow<LibraryUiState> = combine(
-        _searchQuery,
+        _searchQuery.debounce { if (it.isBlank()) 0L else SEARCH_DEBOUNCE_MS },
         _selectedStatus,
         _sortOrder,
         _selectedCollectionId,
@@ -117,7 +123,12 @@ class LibraryViewModel(
         FilterParams(query, status, sort, collectionId) to group
     }.flatMapLatest { (params, group) ->
         val source: Flow<List<Game>> = when {
-            params.query.isNotBlank() -> repository.searchGames(params.query)
+            params.query.isNotBlank() -> repository.searchGames(escapeLikeQuery(params.query)).map { games ->
+                games.filter { game ->
+                    (params.status == GameStatusFilter.ALL || game.status.name == params.status.name) &&
+                        (params.collectionId == null || game.collections.any { it.id == params.collectionId })
+                }
+            }
             params.collectionId != null -> repository.observeGamesInCollection(params.collectionId)
             params.status == GameStatusFilter.ALL -> repository.observeAllGames()
             else -> repository.observeGamesByStatus(
@@ -145,8 +156,14 @@ class LibraryViewModel(
     val uiState: StateFlow<LibraryUiState> = combine(
         queryState,
         _gridMode,
-    ) { state, mode ->
-        state.copy(gridMode = mode)
+        appSettings.showEngineSource,
+        appSettings.showStatus,
+    ) { state, mode, showEngineSource, showStatus ->
+        state.copy(
+            gridMode = mode,
+            showEngineSource = showEngineSource,
+            showStatus = showStatus,
+        )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -168,6 +185,14 @@ class LibraryViewModel(
     fun onGridModeChanged(mode: GridMode) {
         _gridMode.value = mode
         viewModelScope.launch { appSettings.setGridMode(mode) }
+    }
+
+    fun onShowEngineSourceChanged(value: Boolean) {
+        viewModelScope.launch { appSettings.setShowEngineSource(value) }
+    }
+
+    fun onShowStatusChanged(value: Boolean) {
+        viewModelScope.launch { appSettings.setShowStatus(value) }
     }
 
     fun deleteGame(gameId: Long) {
@@ -230,6 +255,15 @@ class LibraryViewModel(
             GroupBy.NONE -> games.map { DisplayItem.GameItem(it) }
         }
     }
+
+    // ── Search ─────────────────────────────────────────────
+
+    /**
+     * Escape SQL LIKE wildcards so user input is matched literally.
+     * Must mirror the ESCAPE '\' clause in GameDao.searchGamesFlow.
+     */
+    private fun escapeLikeQuery(raw: String): String =
+        raw.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
     // ── Sorting ─────────────────────────────────────────────
 

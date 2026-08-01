@@ -31,7 +31,7 @@ interface GameDao {
     suspend fun getGameById(gameId: Long): GameWithRelations?
 
     @Transaction
-    @Query("SELECT * FROM games WHERE title LIKE '%' || :query || '%' ORDER BY date_added DESC")
+    @Query("SELECT * FROM games WHERE title LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY date_added DESC")
     fun searchGamesFlow(query: String): Flow<List<GameWithRelations>>
 
     @Transaction
