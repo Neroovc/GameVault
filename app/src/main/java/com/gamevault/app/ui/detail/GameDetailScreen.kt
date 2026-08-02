@@ -468,14 +468,6 @@ private fun GameHeader(
                 )
             }
 
-            if (sourceName != null) {
-                Text(
-                    text = sourceName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             if (onRatingChange != null) {
                 Spacer(modifier = Modifier.height(8.dp))
 

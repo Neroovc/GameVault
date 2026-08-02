@@ -59,6 +59,8 @@ class AppSettings(private val context: Context) {
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
     }
 
+    private val LEGACY_SHOW_ENGINE_SOURCE = booleanPreferencesKey("show_engine_source")
+
     /** Observe the current theme mode. Defaults to SYSTEM. */
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->
         ThemeMode.fromValue(prefs[Keys.THEME_MODE] ?: ThemeMode.SYSTEM.value)
@@ -109,7 +111,7 @@ class AppSettings(private val context: Context) {
 
     /** Observe whether the engine badge is shown on library cards. Defaults to true. */
     val showEngine: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.SHOW_ENGINE] ?: true
+        prefs[Keys.SHOW_ENGINE] ?: prefs[LEGACY_SHOW_ENGINE_SOURCE] ?: true
     }
 
     /** Persist the engine badge visibility. */
@@ -121,7 +123,7 @@ class AppSettings(private val context: Context) {
 
     /** Observe whether the source badge is shown on library cards. Defaults to true. */
     val showSource: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.SHOW_SOURCE] ?: true
+        prefs[Keys.SHOW_SOURCE] ?: prefs[LEGACY_SHOW_ENGINE_SOURCE] ?: true
     }
 
     /** Persist the source badge visibility. */

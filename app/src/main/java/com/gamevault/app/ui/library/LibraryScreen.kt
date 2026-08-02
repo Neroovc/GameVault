@@ -812,7 +812,7 @@ private fun EmptyLibrary(modifier: Modifier = Modifier) {
         Text("Your library is empty", style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(8.dp))
-        Text("Add your first game to start tracking progress",
+        Text("Your library is empty. Browse sources to add your first game",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             textAlign = TextAlign.Center)
