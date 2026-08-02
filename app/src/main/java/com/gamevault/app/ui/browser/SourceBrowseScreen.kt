@@ -348,7 +348,7 @@ private fun SearchResultCard(
     // Start from the search thumbnail; lazily enrich from the thread page when
     // missing (F95Zone results carry no thumbnail from Brave). The cache is
     // screen-level, so scrolling away and back does not refetch.
-    var cover by remember(result.url) { mutableStateOf(result.thumbnailUrl) }
+    var cover by remember(result.url) { mutableStateOf(coverCache[result.url] ?: result.thumbnailUrl) }
     LaunchedEffect(result.url, cover) {
         if (cover == null && !coverCache.containsKey(result.url)) {
             val fetched = withContext(Dispatchers.IO) { source.fetchCover(result.url) }
