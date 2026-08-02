@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
+import com.gamevault.app.domain.model.GameStatus
+import com.gamevault.app.domain.model.SourceType
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.data.settings.StatusStyle
@@ -34,6 +36,8 @@ data class LibraryUiState(
     val sortOrder: SortOrder = SortOrder.DATE_ADDED_DESC,
     val selectedCollectionId: Long? = null,
     val groupBy: GroupBy = GroupBy.NONE,
+    val activeGroupKey: String? = null,
+    val stripTabs: List<StripTab> = emptyList(),
     val gridMode: GridMode = GridMode.COMFORTABLE,
     val showEngine: Boolean = true,
     val showSource: Boolean = true,
@@ -62,10 +66,46 @@ enum class GroupBy(val displayName: String) {
     CATEGORY("Category"),
 }
 
+/**
+ * One tab of the app-bar category strip. Counts are derived from the RAW library,
+ * not the currently filtered grid, so each axis always reflects the whole shelf.
+ * Each tab carries the [key] of the filter its page controls: null for "All",
+ * otherwise the collection id / status / source name.
+ */
+sealed class StripTab {
+    abstract val label: String
+    abstract val key: String?
+    abstract val count: Int
+
+    data class AllTab(override val count: Int) : StripTab() {
+        override val label: String get() = "All"
+        override val key: String? = null
+    }
+
+    data class CollectionTab(val collection: Collection, override val count: Int) : StripTab() {
+        override val label: String get() = collection.name
+        override val key: String get() = collection.id.toString()
+    }
+
+    data class StatusTab(val status: GameStatus, override val count: Int) : StripTab() {
+        override val label: String get() = status.displayName
+        override val key: String get() = status.name
+    }
+
+    data class SourceTab(val source: SourceType, override val count: Int) : StripTab() {
+        override val label: String get() = source.displayName
+        override val key: String get() = source.name
+    }
+}
+
 sealed class DisplayItem {
     abstract val uniqueKey: String
 
-    data class Header(val label: String, val count: Int) : DisplayItem() {
+    data class Header(
+        val label: String,
+        val count: Int,
+        val groupKey: String = "",
+    ) : DisplayItem() {
         override val uniqueKey get() = "hdr:$label"
     }
 
@@ -94,11 +134,19 @@ class LibraryViewModel(
     private val _selectedCollectionId = MutableStateFlow<Long?>(null)
     val selectedCollectionId: StateFlow<Long?> = _selectedCollectionId.asStateFlow()
 
+    private val _activeGroupKey = MutableStateFlow<String?>(null)
+    val activeGroupKey: StateFlow<String?> = _activeGroupKey.asStateFlow()
+
     private val _groupBy = MutableStateFlow(GroupBy.NONE)
     private val _gridMode = MutableStateFlow(GridMode.COMFORTABLE)
     val gridMode: StateFlow<GridMode> = _gridMode.asStateFlow()
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // Raw library — strip tab counts must reflect the whole shelf, not the
+    // currently filtered grid.
+    private val allGames: StateFlow<List<Game>> = repository.observeAllGames()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
@@ -116,32 +164,66 @@ class LibraryViewModel(
         val collectionId: Long?,
     )
 
+    private data class AxisParams(
+        val status: GameStatusFilter,
+        val collectionId: Long?,
+        val groupKey: String?,
+    )
+
+    private val axisParams: Flow<AxisParams> = combine(
+        _selectedStatus,
+        _selectedCollectionId,
+        _activeGroupKey,
+    ) { status, collectionId, groupKey ->
+        AxisParams(status, collectionId, groupKey)
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
     private val queryState: StateFlow<LibraryUiState> = combine(
         _searchQuery.debounce { if (it.isBlank()) 0L else SEARCH_DEBOUNCE_MS },
-        _selectedStatus,
+        axisParams,
         _sortOrder,
-        _selectedCollectionId,
         _groupBy,
-    ) { query, status, sort, collectionId, group ->
-        FilterParams(query, status, sort, collectionId) to group
+    ) { query, axis, sort, group ->
+        FilterParams(query, axis.status, sort, axis.collectionId) to group
     }.flatMapLatest { (params, group) ->
+        // The strip page is the authority for its own axis; the sheet's chips
+        // only apply on the collection axis (NONE/CATEGORY) and as the plain
+        // status filter when not grouped by status.
+        val effectiveCollectionId = if (group == GroupBy.NONE || group == GroupBy.CATEGORY) {
+            params.collectionId
+        } else null
+
+        val effectiveStatus: GameStatus? = when (group) {
+            GroupBy.STATUS -> _activeGroupKey.value?.let(GameStatus::valueOf)
+            GroupBy.NONE, GroupBy.CATEGORY ->
+                if (params.status == GameStatusFilter.ALL) null else GameStatus.valueOf(params.status.name)
+            GroupBy.SOURCE -> null
+        }
+
+        val effectiveSource: SourceType? = when (group) {
+            GroupBy.SOURCE -> _activeGroupKey.value?.let(SourceType::valueOf)
+            else -> null
+        }
+
         val source: Flow<List<Game>> = when {
             params.query.isNotBlank() -> repository.searchGames(escapeLikeQuery(params.query)).map { games ->
                 games.filter { game ->
-                    (params.status == GameStatusFilter.ALL || game.status.name == params.status.name) &&
-                        (params.collectionId == null || game.collections.any { it.id == params.collectionId })
+                    (effectiveStatus == null || game.status == effectiveStatus) &&
+                        (effectiveSource == null || game.sourceType == effectiveSource) &&
+                        (effectiveCollectionId == null || game.collections.any { it.id == effectiveCollectionId })
                 }
             }
-            params.collectionId != null -> repository.observeGamesInCollection(params.collectionId).map { games ->
-                if (params.status == GameStatusFilter.ALL) games
-                else games.filter { it.status.name == params.status.name }
+            effectiveCollectionId != null -> repository.observeGamesInCollection(effectiveCollectionId).map { games ->
+                if (effectiveStatus == null) games else games.filter { it.status == effectiveStatus }
             }
-            params.status == GameStatusFilter.ALL -> repository.observeAllGames()
-            else -> repository.observeGamesByStatus(
-                com.gamevault.app.domain.model.GameStatus.valueOf(params.status.name)
-            )
+            effectiveStatus != null -> repository.observeGamesByStatus(effectiveStatus)
+            effectiveSource != null -> repository.observeAllGames().map { games ->
+                games.filter { it.sourceType == effectiveSource }
+            }
+            else -> repository.observeAllGames()
         }
+
         source.map { games -> sortGames(games, params.sort) }
             .catch { emit(emptyList<Game>()) }
             .map { sortedGames ->
@@ -154,6 +236,7 @@ class LibraryViewModel(
                     sortOrder = _sortOrder.value,
                     selectedCollectionId = _selectedCollectionId.value,
                     groupBy = _groupBy.value,
+                    activeGroupKey = _activeGroupKey.value,
                 )
             }
     }.stateIn(
@@ -162,9 +245,6 @@ class LibraryViewModel(
         initialValue = LibraryUiState(isLoading = true),
     )
 
-    // kotlinx combine only has typed overloads up to 5 flows, so the overlay
-    // preferences are grouped into a single flow before combining with the
-    // rest of the library state.
     private data class OverlayPrefs(
         val showEngine: Boolean,
         val showSource: Boolean,
@@ -181,12 +261,25 @@ class LibraryViewModel(
         OverlayPrefs(engine, source, status, style)
     }
 
+    private val stripTabsFlow: StateFlow<List<StripTab>> = combine(
+        allGames,
+        collections,
+        _groupBy,
+    ) { games, colls, group ->
+        computeStripTabs(group, games, colls)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyList(),
+    )
+
     val uiState: StateFlow<LibraryUiState> = combine(
         queryState,
         _gridMode,
         overlayPrefs,
         _searchQuery,
-    ) { state, mode, prefs, rawQuery ->
+        stripTabsFlow,
+    ) { state, mode, prefs, rawQuery, tabs ->
         state.copy(
             gridMode = mode,
             showEngine = prefs.showEngine,
@@ -194,6 +287,7 @@ class LibraryViewModel(
             showStatus = prefs.showStatus,
             statusStyle = prefs.statusStyle,
             searchQuery = rawQuery,
+            stripTabs = tabs,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -211,7 +305,11 @@ class LibraryViewModel(
         _selectedCollectionId.value = collectionId
     }
 
-    fun onGroupByChanged(group: GroupBy) { _groupBy.value = group }
+    fun onGroupByChanged(group: GroupBy) {
+        _groupBy.value = group
+        // A fresh axis always starts on its "All" tab.
+        _activeGroupKey.value = null
+    }
 
     fun onGridModeChanged(mode: GridMode) {
         _gridMode.value = mode
@@ -238,7 +336,7 @@ class LibraryViewModel(
         viewModelScope.launch { repository.deleteGame(gameId) }
     }
 
-    fun updateGameStatusBulk(gameIds: List<Long>, status: com.gamevault.app.domain.model.GameStatus) {
+    fun updateGameStatusBulk(gameIds: List<Long>, status: GameStatus) {
         viewModelScope.launch { repository.updateGameStatusBulk(gameIds, status) }
     }
 
@@ -250,28 +348,56 @@ class LibraryViewModel(
         viewModelScope.launch { repository.deleteGames(gameIds) }
     }
 
+    /**
+     * The pager settled on [page] — push the page's filter to the axis state.
+     * Guards against redundant updates (no-op when the filter already matches),
+     * which breaks the pager <-> VM feedback loop.
+     */
+    fun onPagerTabSelected(tabs: List<StripTab>, page: Int) {
+        when (_groupBy.value) {
+            GroupBy.NONE, GroupBy.CATEGORY -> {
+                val id = (tabs.getOrNull(page) as? StripTab.CollectionTab)?.collection?.id
+                if (_selectedCollectionId.value != id) _selectedCollectionId.value = id
+            }
+            GroupBy.STATUS -> {
+                val key = (tabs.getOrNull(page) as? StripTab.StatusTab)?.status?.name
+                if (_activeGroupKey.value != key) _activeGroupKey.value = key
+            }
+            GroupBy.SOURCE -> {
+                val key = (tabs.getOrNull(page) as? StripTab.SourceTab)?.source?.name
+                if (_activeGroupKey.value != key) _activeGroupKey.value = key
+            }
+        }
+    }
+
     // ── Grouping ────────────────────────────────────────────
 
     /**
      * Compute display items from the current games and groupBy setting.
-     * Safe to call from a `remember` or derived state.
+     * [showHeaders] controls the Mihon-style grouped headers: enabled on the
+     * "All" page, disabled for a specific group page (where the tab itself is
+     * the header).
      */
-    fun computeDisplayItems(games: List<Game>, group: GroupBy): List<DisplayItem> {
-        if (group == GroupBy.NONE || games.isEmpty()) {
+    fun computeDisplayItems(
+        games: List<Game>,
+        group: GroupBy,
+        showHeaders: Boolean = true,
+    ): List<DisplayItem> {
+        if (group == GroupBy.NONE || !showHeaders || games.isEmpty()) {
             return games.map { DisplayItem.GameItem(it) }
         }
 
         return when (group) {
             GroupBy.STATUS -> {
-                games.groupBy { it.status.displayName }.entries.map { (label, grouped) ->
-                    listOf(DisplayItem.Header(label, grouped.size)) +
-                        grouped.map { DisplayItem.GameItem(it, label) }
+                games.groupBy { it.status }.entries.map { (status, grouped) ->
+                    listOf(DisplayItem.Header(status.displayName, grouped.size, status.name)) +
+                        grouped.map { DisplayItem.GameItem(it, status.name) }
                 }.flatten()
             }
             GroupBy.SOURCE -> {
-                games.groupBy { it.sourceType.displayName }.entries.map { (label, grouped) ->
-                    listOf(DisplayItem.Header(label, grouped.size)) +
-                        grouped.map { DisplayItem.GameItem(it, label) }
+                games.groupBy { it.sourceType }.entries.map { (source, grouped) ->
+                    listOf(DisplayItem.Header(source.displayName, grouped.size, source.name)) +
+                        grouped.map { DisplayItem.GameItem(it, source.name) }
                 }.flatten()
             }
             GroupBy.CATEGORY -> {
@@ -293,6 +419,27 @@ class LibraryViewModel(
             }
             GroupBy.NONE -> games.map { DisplayItem.GameItem(it) }
         }
+    }
+
+    // ── Strip tabs ──────────────────────────────────────────
+
+    private fun computeStripTabs(
+        group: GroupBy,
+        all: List<Game>,
+        collections: List<Collection>,
+    ): List<StripTab> = when (group) {
+        GroupBy.NONE, GroupBy.CATEGORY ->
+            listOf(StripTab.AllTab(all.size)) + collections.map { coll ->
+                StripTab.CollectionTab(coll, all.count { game -> game.collections.any { it.id == coll.id } })
+            }
+        GroupBy.STATUS ->
+            listOf(StripTab.AllTab(all.size)) + GameStatus.entries
+                .map { status -> StripTab.StatusTab(status, all.count { it.status == status }) }
+                .filter { it.count > 0 }
+        GroupBy.SOURCE ->
+            listOf(StripTab.AllTab(all.size)) + SourceType.entries
+                .map { source -> StripTab.SourceTab(source, all.count { it.sourceType == source }) }
+                .filter { it.count > 0 }
     }
 
     // ── Search ─────────────────────────────────────────────
@@ -326,4 +473,22 @@ class LibraryViewModel(
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
             LibraryViewModel(repository, appSettings) as T
     }
+}
+
+/**
+ * Index of the strip page implied by the current axis filters. 0 = "All".
+ * Clamped to the strip's valid range so indices stay valid after the axis
+ * recomputes (e.g. a group change that shrinks the tab list).
+ */
+internal fun pageIndexForActiveFilter(
+    tabs: List<StripTab>,
+    group: GroupBy,
+    selectedCollectionId: Long?,
+    activeGroupKey: String?,
+): Int {
+    val key = when (group) {
+        GroupBy.NONE, GroupBy.CATEGORY -> selectedCollectionId?.toString()
+        GroupBy.STATUS, GroupBy.SOURCE -> activeGroupKey
+    }
+    return if (key == null) 0 else tabs.indexOfFirst { it.key == key }.coerceAtLeast(0)
 }

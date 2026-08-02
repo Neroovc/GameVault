@@ -502,16 +502,6 @@ private fun Modifier.statusStrip(color: Color): Modifier = drawWithContent {
     )
 }
 
-@Composable
-private fun statusColor(status: GameStatus): Color = when (status) {
-    GameStatus.NOT_STARTED -> MaterialTheme.colorScheme.surfaceContainerHighest
-    GameStatus.PLAYING -> MaterialTheme.colorScheme.primary
-    GameStatus.COMPLETED -> MaterialTheme.colorScheme.tertiary
-    GameStatus.REPLAYING -> MaterialTheme.colorScheme.secondary
-    GameStatus.PAUSED -> MaterialTheme.colorScheme.outline
-    GameStatus.ABANDONED -> MaterialTheme.colorScheme.error
-}
-
 /**
  * Colored status label rendered at the cover/thumbnail top-start corner when
  * [StatusStyle.BADGE] is active.

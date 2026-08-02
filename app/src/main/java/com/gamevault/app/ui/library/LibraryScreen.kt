@@ -1,26 +1,32 @@
 package com.gamevault.app.ui.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,7 +38,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Gamepad
@@ -48,8 +53,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
+import androidx.compose.material3.TabPosition
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +92,8 @@ import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
+import com.gamevault.app.ui.components.statusColor
+import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,9 +121,8 @@ fun LibraryScreen(
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
-    val displayItems = remember(uiState.games, uiState.groupBy) {
-        viewModel.computeDisplayItems(uiState.games, uiState.groupBy)
-    }
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { uiState.stripTabs.size })
 
     val hasActiveFilters = uiState.selectedStatus != GameStatusFilter.ALL ||
         uiState.selectedCollectionId != null ||
@@ -203,14 +212,19 @@ fun LibraryScreen(
         },
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Collection chips row (hidden while searching — search takes over the list)
-            if (collections.isNotEmpty() && uiState.searchQuery.isBlank()) {
-                CollectionChipsRow(
-                    collections = collections,
-                    selectedId = uiState.selectedCollectionId,
-                    onSelected = viewModel::onCollectionFilterChanged,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            val stripTabs = uiState.stripTabs
+
+            // Category strip — glued to the app bar, hidden while searching.
+            if (stripTabs.isNotEmpty() && uiState.searchQuery.isBlank()) {
+                CategoryStrip(
+                    tabs = stripTabs,
+                    pagerState = pagerState,
+                    selectedTabIndex = pagerState.currentPage.coerceIn(0, stripTabs.lastIndex),
+                    onTabSelected = { index ->
+                        scope.launch { pagerState.animateScrollToPage(index) }
+                    },
                 )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 
             // Content
@@ -219,67 +233,64 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center,
                 ) { Text("Loading...") }
-            } else if (displayItems.isEmpty()) {
-                EmptyLibrary(modifier = Modifier.fillMaxSize())
             } else {
-                PullToRefreshBox(
-                    isRefreshing = false,
-                    onRefresh = { },
-                    modifier = Modifier.fillMaxSize(),
-                ) {
-                    LazyVerticalGrid(
-                        columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
-                        contentPadding = PaddingValues(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        displayItems.forEach { item ->
-                            when (item) {
-                                is DisplayItem.Header -> {
-                                    item(
-                                        span = { GridItemSpan(maxLineSpan) },
-                                        contentType = "header",
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 8.dp, horizontal = 4.dp),
-                                        ) {
-                                            Text(
-                                                text = "${item.label} (${item.count})",
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.primary,
-                                            )
-                                        }
-                                    }
-                                }
-                                is DisplayItem.GameItem -> {
-                                    item(key = item.uniqueKey, contentType = "game") {
-                                        GameCard(
-                                            game = item.game,
-                                            isSelected = item.game.id in selectedIds,
-                                            gridMode = uiState.gridMode,
-                                            showEngine = uiState.showEngine,
-                                            showSource = uiState.showSource,
-                                            showStatus = uiState.showStatus,
-                                            statusStyle = uiState.statusStyle,
-                                            onClick = {
-                                                if (isSelectionMode) {
-                                                    selectionViewModel.toggleSelection(item.game.id)
-                                                } else {
-                                                    onGameClick(item.game.id)
-                                                }
-                                            },
-                                            onLongClick = {
-                                                selectionViewModel.toggleSelection(item.game.id)
-                                            },
-                                        )
-                                    }
-                                }
+                val targetPage = pageIndexForActiveFilter(
+                    tabs = stripTabs,
+                    group = uiState.groupBy,
+                    selectedCollectionId = uiState.selectedCollectionId,
+                    activeGroupKey = uiState.activeGroupKey,
+                )
+
+                // While an external change (e.g. a GroupBy switch) is scrolling
+                // the pager to a new target, the still-stale settle page belongs
+                // to the previous axis. Suppress the pager->VM hand-off until the
+                // scroll to the new position actually lands, so a stale index is
+                // never pushed into the VM as the active group.
+                var pagerAxisResetting by rememberSaveable { mutableStateOf(false) }
+
+                // External filter changes must scroll the pager to the matching
+                // page. Only scroll when the pager drifted from its target, so
+                // the two-way sync never loops back on itself.
+                LaunchedEffect(targetPage, uiState.groupBy, stripTabs.size) {
+                    if (stripTabs.isNotEmpty()) {
+                        val clamped = targetPage.coerceIn(0, stripTabs.lastIndex)
+                        if (pagerState.currentPage != clamped) {
+                            pagerAxisResetting = true
+                            try {
+                                pagerState.scrollToPage(clamped)
+                            } finally {
+                                pagerAxisResetting = false
                             }
                         }
                     }
+                }
+
+                // Pager page changes -> push the page's filter into the VM.
+                // (groupBy is part of the keys so an axis switch relaunches the
+                // driver, and the flag neutralizes the still-stale settle.)
+                LaunchedEffect(pagerState.settledPage, stripTabs.size, uiState.groupBy) {
+                    if (stripTabs.isNotEmpty() && !pagerAxisResetting) {
+                        viewModel.onPagerTabSelected(stripTabs, pagerState.settledPage)
+                    }
+                }
+
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                ) { page ->
+                    val showHeaders = uiState.groupBy != GroupBy.NONE && page == 0
+                    val displayItems = remember(uiState.games, uiState.groupBy, showHeaders) {
+                        viewModel.computeDisplayItems(uiState.games, uiState.groupBy, showHeaders)
+                    }
+                    LibraryGridPage(
+                        uiState = uiState,
+                        displayItems = displayItems,
+                        groupBy = uiState.groupBy,
+                        selectedIds = selectedIds,
+                        isSelectionMode = isSelectionMode,
+                        selectionViewModel = selectionViewModel,
+                        onGameClick = onGameClick,
+                    )
                 }
             }
         }
@@ -344,6 +355,228 @@ fun LibraryScreen(
             },
         )
     }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  CATEGORY STRIP + PAGER
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Mihon-style category strip glued under the app bar. The selected tab follows
+ * the [pagerState], so the indicator slides along as pages are swiped.
+ */
+@Composable
+private fun CategoryStrip(
+    tabs: List<StripTab>,
+    pagerState: PagerState,
+    selectedTabIndex: Int,
+    onTabSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    ScrollableTabRow(
+        selectedTabIndex = selectedTabIndex,
+        containerColor = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        edgePadding = 16.dp,
+        indicator = { tabPositions ->
+            PagerStripIndicator(
+                pagerState = pagerState,
+                tabPositions = tabPositions,
+            )
+        },
+        divider = {},
+        modifier = modifier,
+    ) {
+        tabs.forEachIndexed { index, tab ->
+            Tab(
+                selected = selectedTabIndex == index,
+                onClick = { onTabSelected(index) },
+                text = {
+                    Text(
+                        text = "${tab.label} (${tab.count})",
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Indicator that tracks the [pagerState]'s current page and its drag fraction,
+ * so it slides continuously between tabs while swiping instead of jumping.
+ */
+@Composable
+private fun PagerStripIndicator(
+    pagerState: PagerState,
+    tabPositions: List<TabPosition>,
+) {
+    if (tabPositions.isEmpty()) return
+
+    val page = pagerState.currentPage.coerceIn(tabPositions.indices)
+    val fraction = pagerState.currentPageOffsetFraction
+
+    val fromIndex: Int
+    val toIndex: Int
+    when {
+        fraction > 0f && page < tabPositions.lastIndex -> {
+            fromIndex = page
+            toIndex = page + 1
+        }
+        fraction < 0f && page > 0 -> {
+            fromIndex = page - 1
+            toIndex = page
+        }
+        else -> {
+            fromIndex = page
+            toIndex = page
+        }
+    }
+
+    val progress = abs(fraction)
+    val start = tabPositions[fromIndex].left +
+        (tabPositions[toIndex].left - tabPositions[fromIndex].left) * progress
+    val end = tabPositions[fromIndex].right +
+        (tabPositions[toIndex].right - tabPositions[fromIndex].right) * progress
+    val width = (end - start).coerceAtLeast(0.dp)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .wrapContentSize(Alignment.BottomStart)
+            .offset(x = start, y = 0.dp)
+            .width(width)
+            .height(StripIndicatorHeight)
+            .clip(RoundedCornerShape(percent = 50))
+            .background(MaterialTheme.colorScheme.primary),
+    )
+}
+
+private val StripIndicatorHeight = 3.dp
+
+// ═══════════════════════════════════════════════════════════
+//  LIBRARY GRID PAGE
+// ═══════════════════════════════════════════════════════════
+
+@Composable
+private fun LibraryGridPage(
+    uiState: LibraryUiState,
+    displayItems: List<DisplayItem>,
+    groupBy: GroupBy,
+    selectedIds: Set<Long>,
+    isSelectionMode: Boolean,
+    selectionViewModel: LibrarySelectionViewModel,
+    onGameClick: (Long) -> Unit,
+) {
+    if (displayItems.isEmpty()) {
+        EmptyLibrary(modifier = Modifier.fillMaxSize())
+        return
+    }
+
+    PullToRefreshBox(
+        isRefreshing = false,
+        onRefresh = { },
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        LazyVerticalGrid(
+            columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            displayItems.forEach { item ->
+                when (item) {
+                    is DisplayItem.Header -> {
+                        item(
+                            span = { GridItemSpan(maxLineSpan) },
+                            contentType = "header",
+                        ) {
+                            GroupHeader(
+                                label = item.label,
+                                count = item.count,
+                                accentColor = groupHeaderAccent(groupBy, item.groupKey),
+                            )
+                        }
+                    }
+                    is DisplayItem.GameItem -> {
+                        item(key = item.uniqueKey, contentType = "game") {
+                            GameCard(
+                                game = item.game,
+                                isSelected = item.game.id in selectedIds,
+                                gridMode = uiState.gridMode,
+                                showEngine = uiState.showEngine,
+                                showSource = uiState.showSource,
+                                showStatus = uiState.showStatus,
+                                statusStyle = uiState.statusStyle,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        selectionViewModel.toggleSelection(item.game.id)
+                                    } else {
+                                        onGameClick(item.game.id)
+                                    }
+                                },
+                                onLongClick = {
+                                    selectionViewModel.toggleSelection(item.game.id)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Mihon-style section header: a small vertical color strip (status accent for
+ * status groups, primary for source/category), label and count, over a subtly
+ * tinted row.
+ */
+@Composable
+private fun GroupHeader(
+    label: String,
+    count: Int,
+    accentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(GroupHeaderStripWidth)
+                .fillMaxHeight()
+                .background(accentColor),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = "($count)",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private val GroupHeaderStripWidth = 4.dp
+
+@Composable
+private fun groupHeaderAccent(group: GroupBy, groupKey: String): Color {
+    if (group == GroupBy.STATUS && groupKey.isNotEmpty()) {
+        return statusColor(GameStatus.valueOf(groupKey))
+    }
+    return MaterialTheme.colorScheme.primary
 }
 
 // ═══════════════════════════════════════════════════════════
