@@ -162,21 +162,37 @@ class LibraryViewModel(
         initialValue = LibraryUiState(isLoading = true),
     )
 
-    val uiState: StateFlow<LibraryUiState> = combine(
-        queryState,
-        _gridMode,
+    // kotlinx combine only has typed overloads up to 5 flows, so the overlay
+    // preferences are grouped into a single flow before combining with the
+    // rest of the library state.
+    private data class OverlayPrefs(
+        val showEngine: Boolean,
+        val showSource: Boolean,
+        val showStatus: Boolean,
+        val statusStyle: StatusStyle,
+    )
+
+    private val overlayPrefs: Flow<OverlayPrefs> = combine(
         appSettings.showEngine,
         appSettings.showSource,
         appSettings.showStatus,
         appSettings.statusStyle,
+    ) { engine, source, status, style ->
+        OverlayPrefs(engine, source, status, style)
+    }
+
+    val uiState: StateFlow<LibraryUiState> = combine(
+        queryState,
+        _gridMode,
+        overlayPrefs,
         _searchQuery,
-    ) { state, mode, showEngine, showSource, showStatus, statusStyle, rawQuery ->
+    ) { state, mode, prefs, rawQuery ->
         state.copy(
             gridMode = mode,
-            showEngine = showEngine,
-            showSource = showSource,
-            showStatus = showStatus,
-            statusStyle = statusStyle,
+            showEngine = prefs.showEngine,
+            showSource = prefs.showSource,
+            showStatus = prefs.showStatus,
+            statusStyle = prefs.statusStyle,
             searchQuery = rawQuery,
         )
     }.stateIn(
