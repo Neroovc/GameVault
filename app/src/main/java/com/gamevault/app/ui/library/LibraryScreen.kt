@@ -29,7 +29,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
@@ -43,7 +42,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,6 +81,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.data.settings.GridMode
+import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
 import kotlinx.coroutines.launch
@@ -92,7 +91,6 @@ import kotlinx.coroutines.launch
 fun LibraryScreen(
     viewModel: LibraryViewModel,
     onGameClick: (Long) -> Unit,
-    onAddGame: () -> Unit,
     onCollectionsClick: () -> Unit = {},
     selectionViewModel: LibrarySelectionViewModel = viewModel(),
 ) {
@@ -194,13 +192,6 @@ fun LibraryScreen(
                 )
             }
         },
-        floatingActionButton = {
-            if (!isSelectionMode) {
-                FloatingActionButton(onClick = onAddGame) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Game")
-                }
-            }
-        },
         bottomBar = {
             if (isSelectionMode) {
                 SelectionBottomBar(
@@ -229,7 +220,7 @@ fun LibraryScreen(
                     contentAlignment = Alignment.Center,
                 ) { Text("Loading...") }
             } else if (displayItems.isEmpty()) {
-                EmptyLibrary(onAddGame = onAddGame, modifier = Modifier.fillMaxSize())
+                EmptyLibrary(modifier = Modifier.fillMaxSize())
             } else {
                 PullToRefreshBox(
                     isRefreshing = false,
@@ -269,8 +260,10 @@ fun LibraryScreen(
                                             game = item.game,
                                             isSelected = item.game.id in selectedIds,
                                             gridMode = uiState.gridMode,
-                                            showEngineSource = uiState.showEngineSource,
+                                            showEngine = uiState.showEngine,
+                                            showSource = uiState.showSource,
                                             showStatus = uiState.showStatus,
+                                            statusStyle = uiState.statusStyle,
                                             onClick = {
                                                 if (isSelectionMode) {
                                                     selectionViewModel.toggleSelection(item.game.id)
@@ -303,8 +296,10 @@ fun LibraryScreen(
             onSortChanged = viewModel::onSortOrderChanged,
             onGroupChanged = viewModel::onGroupByChanged,
             onGridModeChanged = viewModel::onGridModeChanged,
-            onShowEngineSourceChanged = viewModel::onShowEngineSourceChanged,
+            onShowEngineChanged = viewModel::onShowEngineChanged,
+            onShowSourceChanged = viewModel::onShowSourceChanged,
             onShowStatusChanged = viewModel::onShowStatusChanged,
+            onStatusStyleChanged = viewModel::onStatusStyleChanged,
         )
     }
 
@@ -366,8 +361,10 @@ private fun FilterSortSheet(
     onSortChanged: (SortOrder) -> Unit,
     onGroupChanged: (GroupBy) -> Unit,
     onGridModeChanged: (GridMode) -> Unit,
-    onShowEngineSourceChanged: (Boolean) -> Unit,
+    onShowEngineChanged: (Boolean) -> Unit,
+    onShowSourceChanged: (Boolean) -> Unit,
     onShowStatusChanged: (Boolean) -> Unit,
+    onStatusStyleChanged: (StatusStyle) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -413,10 +410,14 @@ private fun FilterSortSheet(
                     2 -> AppearanceTab(
                         gridMode = uiState.gridMode,
                         onGridModeChanged = onGridModeChanged,
-                        showEngineSource = uiState.showEngineSource,
-                        onShowEngineSourceChanged = onShowEngineSourceChanged,
+                        showEngine = uiState.showEngine,
+                        onShowEngineChanged = onShowEngineChanged,
+                        showSource = uiState.showSource,
+                        onShowSourceChanged = onShowSourceChanged,
                         showStatus = uiState.showStatus,
                         onShowStatusChanged = onShowStatusChanged,
+                        statusStyle = uiState.statusStyle,
+                        onStatusStyleChanged = onStatusStyleChanged,
                     )
                     3 -> GroupTab(
                         current = uiState.groupBy,
@@ -497,10 +498,14 @@ private fun SortTab(
 private fun AppearanceTab(
     gridMode: GridMode,
     onGridModeChanged: (GridMode) -> Unit,
-    showEngineSource: Boolean,
-    onShowEngineSourceChanged: (Boolean) -> Unit,
+    showEngine: Boolean,
+    onShowEngineChanged: (Boolean) -> Unit,
+    showSource: Boolean,
+    onShowSourceChanged: (Boolean) -> Unit,
     showStatus: Boolean,
     onShowStatusChanged: (Boolean) -> Unit,
+    statusStyle: StatusStyle,
+    onStatusStyleChanged: (StatusStyle) -> Unit,
 ) {
     SheetPageColumn {
         SectionLabel("Grid mode")
@@ -520,15 +525,35 @@ private fun AppearanceTab(
         HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
         SectionLabel("Overlay")
         OverlayToggleRow(
-            label = "Engine & source",
-            checked = showEngineSource,
-            onCheckedChange = onShowEngineSourceChanged,
+            label = "Engine",
+            checked = showEngine,
+            onCheckedChange = onShowEngineChanged,
+        )
+        OverlayToggleRow(
+            label = "Source",
+            checked = showSource,
+            onCheckedChange = onShowSourceChanged,
         )
         OverlayToggleRow(
             label = "Status",
             checked = showStatus,
             onCheckedChange = onShowStatusChanged,
         )
+        if (showStatus) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                StatusStyle.entries.forEach { style ->
+                    FilterChip(
+                        selected = statusStyle == style,
+                        onClick = { onStatusStyleChanged(style) },
+                        label = { Text(style.displayName, style = MaterialTheme.typography.labelSmall) },
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -772,7 +797,7 @@ private fun BulkCollectionDialog(
 // ═══════════════════════════════════════════════════════════
 
 @Composable
-private fun EmptyLibrary(onAddGame: () -> Unit, modifier: Modifier = Modifier) {
+private fun EmptyLibrary(modifier: Modifier = Modifier) {
     Column(
         modifier = modifier.padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

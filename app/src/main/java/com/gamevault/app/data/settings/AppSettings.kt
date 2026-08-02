@@ -35,6 +35,11 @@ enum class GridMode(val value: Int, val displayName: String) {
     }
 }
 
+enum class StatusStyle(val displayName: String) {
+    TOP_BAR("Top bar"),
+    BADGE("Badge");
+}
+
 /**
  * Persisted app settings backed by Jetpack DataStore.
  */
@@ -45,8 +50,10 @@ class AppSettings(private val context: Context) {
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
         val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
         val GRID_MODE = intPreferencesKey("grid_mode")
-        val SHOW_ENGINE_SOURCE = booleanPreferencesKey("show_engine_source")
+        val SHOW_ENGINE = booleanPreferencesKey("show_engine")
+        val SHOW_SOURCE = booleanPreferencesKey("show_source")
         val SHOW_STATUS = booleanPreferencesKey("show_status")
+        val STATUS_STYLE = stringPreferencesKey("status_style")
         val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
         val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
@@ -100,15 +107,41 @@ class AppSettings(private val context: Context) {
         }
     }
 
-    /** Observe whether the engine & source badge is shown on library cards. Defaults to true. */
-    val showEngineSource: Flow<Boolean> = context.dataStore.data.map { prefs ->
-        prefs[Keys.SHOW_ENGINE_SOURCE] ?: true
+    /** Observe whether the engine badge is shown on library cards. Defaults to true. */
+    val showEngine: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SHOW_ENGINE] ?: true
     }
 
-    /** Persist the engine & source badge visibility. */
-    suspend fun setShowEngineSource(value: Boolean) {
+    /** Persist the engine badge visibility. */
+    suspend fun setShowEngine(value: Boolean) {
         context.dataStore.edit { prefs ->
-            prefs[Keys.SHOW_ENGINE_SOURCE] = value
+            prefs[Keys.SHOW_ENGINE] = value
+        }
+    }
+
+    /** Observe whether the source badge is shown on library cards. Defaults to true. */
+    val showSource: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.SHOW_SOURCE] ?: true
+    }
+
+    /** Persist the source badge visibility. */
+    suspend fun setShowSource(value: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SHOW_SOURCE] = value
+        }
+    }
+
+    /** Observe the status indicator style on library cards. Defaults to TOP_BAR. */
+    val statusStyle: Flow<StatusStyle> = context.dataStore.data.map { prefs ->
+        prefs[Keys.STATUS_STYLE]?.let { name ->
+            runCatching { StatusStyle.valueOf(name) }.getOrDefault(StatusStyle.TOP_BAR)
+        } ?: StatusStyle.TOP_BAR
+    }
+
+    /** Persist the status indicator style. */
+    suspend fun setStatusStyle(style: StatusStyle) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.STATUS_STYLE] = style.name
         }
     }
 

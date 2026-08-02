@@ -28,10 +28,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
@@ -64,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -75,6 +80,7 @@ import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.RouteStatus
+import com.gamevault.app.domain.model.SourceType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -353,6 +359,15 @@ fun GameDetailScreen(
     }
 }
 
+private fun statusMetaIcon(status: GameStatus): ImageVector = when (status) {
+    GameStatus.NOT_STARTED -> Icons.Filled.Circle
+    GameStatus.PLAYING -> Icons.Filled.PlayArrow
+    GameStatus.COMPLETED -> Icons.Filled.Check
+    GameStatus.REPLAYING -> Icons.Filled.Repeat
+    GameStatus.PAUSED -> Icons.Filled.Pause
+    GameStatus.ABANDONED -> Icons.Filled.Flag
+}
+
 @Composable
 private fun GameHeader(
     game: com.gamevault.app.domain.model.Game,
@@ -402,6 +417,47 @@ private fun GameHeader(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // Status + source meta row (source skipped for MANUAL in saved mode)
+            val sourceLabel = when {
+                sourceName != null -> sourceName
+                game.sourceType != SourceType.MANUAL -> game.sourceType.displayName
+                else -> null
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    imageVector = statusMetaIcon(game.status),
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = game.status.displayName,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (sourceLabel != null) {
+                    Text(
+                        text = "·",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Icon(
+                        imageVector = Icons.Filled.Public,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = sourceLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             if (game.engine != null) {

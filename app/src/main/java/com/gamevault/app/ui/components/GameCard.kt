@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamevault.app.R
 import com.gamevault.app.data.settings.GridMode
+import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.GameStatus
@@ -64,8 +65,10 @@ fun GameCard(
     isSelected: Boolean = false,
     onLongClick: () -> Unit = {},
     gridMode: GridMode = GridMode.COMFORTABLE,
-    showEngineSource: Boolean = true,
+    showEngine: Boolean = true,
+    showSource: Boolean = true,
     showStatus: Boolean = true,
+    statusStyle: StatusStyle = StatusStyle.TOP_BAR,
 ) {
     Card(
         modifier = modifier
@@ -82,15 +85,35 @@ fun GameCard(
             containerColor = Color.Transparent,
         ),
     ) {
-        Box(modifier = Modifier.fillMaxSize().then(if (showStatus) Modifier.statusStrip(statusColor(game.status)) else Modifier)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (showStatus && statusStyle == StatusStyle.TOP_BAR) {
+                        Modifier.statusStrip(statusColor(game.status))
+                    } else {
+                        Modifier
+                    }
+                )
+        ) {
             if (gridMode == GridMode.LIST) {
-                ListContent(game, isSelected)
+                ListContent(
+                    game = game,
+                    isSelected = isSelected,
+                    showEngine = showEngine,
+                    showSource = showSource,
+                    showStatus = showStatus,
+                    statusStyle = statusStyle,
+                )
             } else {
                 GridContent(
                     game = game,
                     isSelected = isSelected,
                     isCompact = gridMode == GridMode.COMPACT,
-                    showEngineSource = showEngineSource,
+                    showEngine = showEngine,
+                    showSource = showSource,
+                    showStatus = showStatus,
+                    statusStyle = statusStyle,
                 )
             }
         }
@@ -102,7 +125,10 @@ private fun GridContent(
     game: Game,
     isSelected: Boolean,
     isCompact: Boolean,
-    showEngineSource: Boolean,
+    showEngine: Boolean,
+    showSource: Boolean,
+    showStatus: Boolean,
+    statusStyle: StatusStyle,
 ) {
     Column {
         // ── Cover ──
@@ -156,13 +182,25 @@ private fun GridContent(
                 )
             }
 
-            // Engine + Source badge (top-end) — gated by the overlay setting
-            if (showEngineSource) {
+            // Engine + Source badge (top-end) — gated by the overlay settings
+            if (showEngine || showSource) {
                 EngineSourceBadge(
                     engine = game.engine,
                     sourceType = game.sourceType,
+                    showEngine = showEngine,
+                    showSource = showSource,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                )
+            }
+
+            // Status badge (top-start) — gated by the overlay settings and style
+            if (showStatus && statusStyle == StatusStyle.BADGE) {
+                StatusBadge(
+                    status = game.status,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
                         .padding(6.dp),
                 )
             }
@@ -212,6 +250,10 @@ private fun GridContent(
 private fun ListContent(
     game: Game,
     isSelected: Boolean,
+    showEngine: Boolean,
+    showSource: Boolean,
+    showStatus: Boolean,
+    statusStyle: StatusStyle,
 ) {
     Row(modifier = Modifier.height(IntrinsicSize.Min)) {
         // ── Thumbnail ──
@@ -263,6 +305,16 @@ private fun ListContent(
                         .size(20.dp),
                 )
             }
+
+            // Status badge (top-start) — gated by the overlay settings and style
+            if (showStatus && statusStyle == StatusStyle.BADGE) {
+                StatusBadge(
+                    status = game.status,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(4.dp),
+                )
+            }
         }
 
         // ── Details ──
@@ -281,10 +333,10 @@ private fun ListContent(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Engine + Source as text
+            // Engine + Source as text, gated by the overlay settings
             val meta = buildList {
-                game.engine?.let { add(it.displayName) }
-                if (game.sourceType != SourceType.MANUAL) add(game.sourceType.displayName)
+                if (showEngine) game.engine?.let { add(it.displayName) }
+                if (showSource && game.sourceType != SourceType.MANUAL) add(game.sourceType.displayName)
             }
             if (meta.isNotEmpty()) {
                 Text(
@@ -363,11 +415,13 @@ private fun sourcePainter(sourceType: SourceType): Painter? = when (sourceType) 
 private fun EngineSourceBadge(
     engine: GameEngine?,
     sourceType: SourceType?,
+    showEngine: Boolean,
+    showSource: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val showEngine = engine != null
-    val showSource = sourceType != null && sourceType != SourceType.MANUAL
-    if (!showEngine && !showSource) return
+    val showEngineIcon = showEngine && engine != null
+    val showSourceIcon = showSource && sourceType != null && sourceType != SourceType.MANUAL
+    if (!showEngineIcon && !showSourceIcon) return
 
     // Komikku-style: engine + source grouped as small icon pills, no text.
     Row(
@@ -375,14 +429,14 @@ private fun EngineSourceBadge(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (showEngine) {
+        if (showEngineIcon) {
             BadgeIcon(
                 painter = enginePainter(engine),
                 contentDescription = engine.displayName,
                 fallback = Icons.Filled.QuestionMark,
             )
         }
-        if (showSource) {
+        if (showSourceIcon) {
             BadgeIcon(
                 painter = sourcePainter(sourceType),
                 contentDescription = sourceType.displayName,
@@ -444,7 +498,7 @@ private fun Modifier.statusStrip(color: Color): Modifier = drawWithContent {
     drawRect(
         color = color,
         topLeft = Offset.Zero,
-        size = Size(statusStripWidth.toPx(), size.height),
+        size = Size(size.width, statusStripWidth.toPx()),
     )
 }
 
@@ -456,6 +510,43 @@ private fun statusColor(status: GameStatus): Color = when (status) {
     GameStatus.REPLAYING -> MaterialTheme.colorScheme.secondary
     GameStatus.PAUSED -> MaterialTheme.colorScheme.outline
     GameStatus.ABANDONED -> MaterialTheme.colorScheme.error
+}
+
+/**
+ * Colored status label rendered at the cover/thumbnail top-start corner when
+ * [StatusStyle.BADGE] is active.
+ */
+@Composable
+private fun StatusBadge(
+    status: GameStatus,
+    modifier: Modifier = Modifier,
+) {
+    val label = when (status) {
+        GameStatus.NOT_STARTED -> "New"
+        GameStatus.PLAYING -> "Playing"
+        GameStatus.COMPLETED -> "Done"
+        GameStatus.REPLAYING -> "Replay"
+        GameStatus.PAUSED -> "Paused"
+        GameStatus.ABANDONED -> "Dropped"
+    }
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(4.dp),
+        colors = CardDefaults.cardColors(containerColor = statusColor(status)),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (status == GameStatus.NOT_STARTED) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        )
+    }
 }
 
 @Composable

@@ -105,9 +105,6 @@ private fun GameVaultNavHost(
                 onGameClick = { gameId ->
                     rootNavController.navigate(NavRoutes.gameDetail(gameId))
                 },
-                onAddGame = {
-                    rootNavController.navigate(NavRoutes.ADD_GAME)
-                },
                 onSettingsClick = { rootNavController.navigate(NavRoutes.SETTINGS) },
                 onSourceClick = { sourceId ->
                     rootNavController.navigate(NavRoutes.sourceBrowse(sourceId))
@@ -126,6 +123,9 @@ private fun GameVaultNavHost(
                 gameRepository = appContainer.gameRepository,
                 appSettings = appContainer.appSettings,
                 onNavigateBack = { rootNavController.popBackStack() },
+                onAddGame = {
+                    rootNavController.navigate(NavRoutes.ADD_GAME)
+                },
             )
         }
 
@@ -189,9 +189,6 @@ private fun GameVaultNavHost(
                 onGameClick = { gameId ->
                     rootNavController.navigate(NavRoutes.gameDetail(gameId))
                 },
-                onAddGame = {
-                    rootNavController.navigate(NavRoutes.ADD_GAME)
-                },
             )
         }
     }
@@ -201,7 +198,6 @@ private fun GameVaultNavHost(
 private fun MainTabsScreen(
     appContainer: AppContainer,
     onGameClick: (Long) -> Unit,
-    onAddGame: () -> Unit,
     onSettingsClick: () -> Unit,
     onSourceClick: (String) -> Unit,
 ) {
@@ -252,7 +248,6 @@ private fun MainTabsScreen(
                             LibraryScreen(
                                 viewModel = viewModel,
                                 onGameClick = onGameClick,
-                                onAddGame = onAddGame,
                             )
                         }
                     }

@@ -7,6 +7,7 @@ import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.GridMode
+import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -34,8 +35,10 @@ data class LibraryUiState(
     val selectedCollectionId: Long? = null,
     val groupBy: GroupBy = GroupBy.NONE,
     val gridMode: GridMode = GridMode.COMFORTABLE,
-    val showEngineSource: Boolean = true,
+    val showEngine: Boolean = true,
+    val showSource: Boolean = true,
     val showStatus: Boolean = true,
+    val statusStyle: StatusStyle = StatusStyle.TOP_BAR,
 )
 
 enum class GameStatusFilter {
@@ -162,14 +165,18 @@ class LibraryViewModel(
     val uiState: StateFlow<LibraryUiState> = combine(
         queryState,
         _gridMode,
-        appSettings.showEngineSource,
+        appSettings.showEngine,
+        appSettings.showSource,
         appSettings.showStatus,
+        appSettings.statusStyle,
         _searchQuery,
-    ) { state, mode, showEngineSource, showStatus, rawQuery ->
+    ) { state, mode, showEngine, showSource, showStatus, statusStyle, rawQuery ->
         state.copy(
             gridMode = mode,
-            showEngineSource = showEngineSource,
+            showEngine = showEngine,
+            showSource = showSource,
             showStatus = showStatus,
+            statusStyle = statusStyle,
             searchQuery = rawQuery,
         )
     }.stateIn(
@@ -195,12 +202,20 @@ class LibraryViewModel(
         viewModelScope.launch { appSettings.setGridMode(mode) }
     }
 
-    fun onShowEngineSourceChanged(value: Boolean) {
-        viewModelScope.launch { appSettings.setShowEngineSource(value) }
+    fun onShowEngineChanged(value: Boolean) {
+        viewModelScope.launch { appSettings.setShowEngine(value) }
+    }
+
+    fun onShowSourceChanged(value: Boolean) {
+        viewModelScope.launch { appSettings.setShowSource(value) }
     }
 
     fun onShowStatusChanged(value: Boolean) {
         viewModelScope.launch { appSettings.setShowStatus(value) }
+    }
+
+    fun onStatusStyleChanged(style: StatusStyle) {
+        viewModelScope.launch { appSettings.setStatusStyle(style) }
     }
 
     fun deleteGame(gameId: Long) {
