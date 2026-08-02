@@ -63,7 +63,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -473,53 +473,48 @@ private fun LibraryGridPage(
         return
     }
 
-    PullToRefreshBox(
-        isRefreshing = false,
-        onRefresh = { },
+    LazyVerticalGrid(
+        columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
+        contentPadding = PaddingValues(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         modifier = Modifier.fillMaxSize(),
     ) {
-        LazyVerticalGrid(
-            columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
-            contentPadding = PaddingValues(12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            displayItems.forEach { item ->
-                when (item) {
-                    is DisplayItem.Header -> {
-                        item(
-                            span = { GridItemSpan(maxLineSpan) },
-                            contentType = "header",
-                        ) {
-                            GroupHeader(
-                                label = item.label,
-                                count = item.count,
-                                accentColor = groupHeaderAccent(groupBy, item.groupKey),
-                            )
-                        }
+        displayItems.forEach { item ->
+            when (item) {
+                is DisplayItem.Header -> {
+                    item(
+                        span = { GridItemSpan(maxLineSpan) },
+                        contentType = "header",
+                    ) {
+                        GroupHeader(
+                            label = item.label,
+                            count = item.count,
+                            accentColor = groupHeaderAccent(groupBy, item.groupKey),
+                        )
                     }
-                    is DisplayItem.GameItem -> {
-                        item(key = item.uniqueKey, contentType = "game") {
-                            GameCard(
-                                game = item.game,
-                                isSelected = item.game.id in selectedIds,
-                                gridMode = uiState.gridMode,
-                                showEngine = uiState.showEngine,
-                                showSource = uiState.showSource,
-                                showStatus = uiState.showStatus,
-                                statusStyle = uiState.statusStyle,
-                                onClick = {
-                                    if (isSelectionMode) {
-                                        selectionViewModel.toggleSelection(item.game.id)
-                                    } else {
-                                        onGameClick(item.game.id)
-                                    }
-                                },
-                                onLongClick = {
+                }
+                is DisplayItem.GameItem -> {
+                    item(key = item.uniqueKey, contentType = "game") {
+                        GameCard(
+                            game = item.game,
+                            isSelected = item.game.id in selectedIds,
+                            gridMode = uiState.gridMode,
+                            showEngine = uiState.showEngine,
+                            showSource = uiState.showSource,
+                            showStatus = uiState.showStatus,
+                            statusStyle = uiState.statusStyle,
+                            onClick = {
+                                if (isSelectionMode) {
                                     selectionViewModel.toggleSelection(item.game.id)
-                                },
-                            )
-                        }
+                                } else {
+                                    onGameClick(item.game.id)
+                                }
+                            },
+                            onLongClick = {
+                                selectionViewModel.toggleSelection(item.game.id)
+                            },
+                        )
                     }
                 }
             }
