@@ -10,8 +10,12 @@ import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.local.GameVaultDatabase
 import com.gamevault.app.data.remote.F95ZoneScraper
 import com.gamevault.app.data.remote.F95ZoneSource
+import com.gamevault.app.data.remote.FapForFunScraper
+import com.gamevault.app.data.remote.FapForFunSource
 import com.gamevault.app.data.remote.ItchScraper
 import com.gamevault.app.data.remote.ItchSource
+import com.gamevault.app.data.remote.RyuugamesScraper
+import com.gamevault.app.data.remote.RyuugamesSource
 import com.gamevault.app.data.repository.GameRepositoryImpl
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.repository.GameRepository
@@ -77,10 +81,28 @@ class AppContainer(private val app: GameVaultApp) {
         ItchSource(itchScraper)
     }
 
+    val ryuugamesScraper: RyuugamesScraper by lazy {
+        RyuugamesScraper()
+    }
+
+    val ryuugamesSource: RyuugamesSource by lazy {
+        RyuugamesSource(ryuugamesScraper)
+    }
+
+    val fapForFunScraper: FapForFunScraper by lazy {
+        FapForFunScraper()
+    }
+
+    val fapForFunSource: FapForFunSource by lazy {
+        FapForFunSource(fapForFunScraper)
+    }
+
     val sourceRegistry: SourceRegistry by lazy {
         SourceRegistry().apply {
             register(f95ZoneSource)
             register(itchSource)
+            register(ryuugamesSource)
+            register(fapForFunSource)
         }
     }
 

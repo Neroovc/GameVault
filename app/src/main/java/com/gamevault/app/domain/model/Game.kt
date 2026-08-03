@@ -64,5 +64,7 @@ enum class SourceType(val displayName: String) {
     VNDB("VNDB"),
     ITCHIO("Itch.io"),
     DLSITE("DLSite"),
-    MANUAL("Manual");
+    MANUAL("Manual"),
+    RYUU_GAMES("RyuuGames"),
+    FAP_FOR_FUN("FapForFun");
 }
