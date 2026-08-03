@@ -219,7 +219,7 @@ fun LibraryScreen(
                 CategoryStrip(
                     tabs = stripTabs,
                     pagerState = pagerState,
-                    selectedTabIndex = pagerState.currentPage.coerceIn(0, stripTabs.lastIndex),
+                    selectedTabIndex = pagerState.settledPage.coerceIn(0, stripTabs.lastIndex),
                     onTabSelected = { index ->
                         scope.launch { pagerState.animateScrollToPage(index) }
                     },
@@ -278,9 +278,9 @@ fun LibraryScreen(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
                 ) { page ->
-                    val showHeaders = uiState.groupBy != GroupBy.NONE && page == 0
-                    val displayItems = remember(uiState.games, uiState.groupBy, showHeaders) {
-                        viewModel.computeDisplayItems(uiState.games, uiState.groupBy, showHeaders)
+                    val displayItems = when {
+                        uiState.groupBy != GroupBy.NONE && page == 0 -> uiState.displayItems.withHeaders
+                        else -> uiState.displayItems.flat
                     }
                     LibraryGridPage(
                         uiState = uiState,

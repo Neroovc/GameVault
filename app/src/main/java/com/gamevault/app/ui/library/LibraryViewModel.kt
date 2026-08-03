@@ -11,6 +11,7 @@ import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.repository.GameRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -43,6 +45,7 @@ data class LibraryUiState(
     val showSource: Boolean = true,
     val showStatus: Boolean = true,
     val statusStyle: StatusStyle = StatusStyle.TOP_BAR,
+    val displayItems: LibraryDisplayItems = LibraryDisplayItems(emptyList(), emptyList()),
 )
 
 enum class GameStatusFilter {
@@ -116,6 +119,11 @@ sealed class DisplayItem {
         override val uniqueKey get() = if (groupKey.isEmpty()) "g:${game.id}" else "g:$groupKey:${game.id}"
     }
 }
+
+data class LibraryDisplayItems(
+    val withHeaders: List<DisplayItem>,
+    val flat: List<DisplayItem>,
+)
 
 class LibraryViewModel(
     private val repository: GameRepository,
@@ -239,6 +247,7 @@ class LibraryViewModel(
                     activeGroupKey = _activeGroupKey.value,
                 )
             }
+            .flowOn(Dispatchers.Default)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
@@ -267,7 +276,7 @@ class LibraryViewModel(
         _groupBy,
     ) { games, colls, group ->
         computeStripTabs(group, games, colls)
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = emptyList(),
@@ -280,6 +289,14 @@ class LibraryViewModel(
         _searchQuery,
         stripTabsFlow,
     ) { state, mode, prefs, rawQuery, tabs ->
+        val displayItems = LibraryDisplayItems(
+            flat = computeDisplayItems(state.games, state.groupBy, showHeaders = false),
+            withHeaders = if (state.groupBy != GroupBy.NONE) {
+                computeDisplayItems(state.games, state.groupBy, showHeaders = true)
+            } else {
+                emptyList()
+            },
+        )
         state.copy(
             gridMode = mode,
             showEngine = prefs.showEngine,
@@ -288,8 +305,9 @@ class LibraryViewModel(
             statusStyle = prefs.statusStyle,
             searchQuery = rawQuery,
             stripTabs = tabs,
+            displayItems = displayItems,
         )
-    }.stateIn(
+    }.flowOn(Dispatchers.Default).stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = LibraryUiState(isLoading = true),
@@ -428,18 +446,35 @@ class LibraryViewModel(
         all: List<Game>,
         collections: List<Collection>,
     ): List<StripTab> = when (group) {
-        GroupBy.NONE, GroupBy.CATEGORY ->
-            listOf(StripTab.AllTab(all.size)) + collections.map { coll ->
-                StripTab.CollectionTab(coll, all.count { game -> game.collections.any { it.id == coll.id } })
+        GroupBy.NONE, GroupBy.CATEGORY -> {
+            val counts = HashMap<Long, Int>()
+            for (game in all) {
+                for (coll in game.collections) {
+                    counts[coll.id] = (counts[coll.id] ?: 0) + 1
+                }
             }
-        GroupBy.STATUS ->
+            listOf(StripTab.AllTab(all.size)) + collections.map { coll ->
+                StripTab.CollectionTab(coll, counts[coll.id] ?: 0)
+            }
+        }
+        GroupBy.STATUS -> {
+            val counts = HashMap<GameStatus, Int>()
+            for (game in all) {
+                counts[game.status] = (counts[game.status] ?: 0) + 1
+            }
             listOf(StripTab.AllTab(all.size)) + GameStatus.entries
-                .map { status -> StripTab.StatusTab(status, all.count { it.status == status }) }
+                .map { status -> StripTab.StatusTab(status, counts[status] ?: 0) }
                 .filter { it.count > 0 }
-        GroupBy.SOURCE ->
+        }
+        GroupBy.SOURCE -> {
+            val counts = HashMap<SourceType, Int>()
+            for (game in all) {
+                counts[game.sourceType] = (counts[game.sourceType] ?: 0) + 1
+            }
             listOf(StripTab.AllTab(all.size)) + SourceType.entries
-                .map { source -> StripTab.SourceTab(source, all.count { it.sourceType == source }) }
+                .map { source -> StripTab.SourceTab(source, counts[source] ?: 0) }
                 .filter { it.count > 0 }
+        }
     }
 
     // ── Search ─────────────────────────────────────────────
