@@ -97,7 +97,6 @@ import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
 import com.gamevault.app.ui.components.statusColor
-import kotlin.math.abs
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -477,7 +476,7 @@ private fun PagerStripIndicator(
                     }
                 }
 
-                val progress = abs(fraction)
+                val progress = if (fraction >= 0f) fraction else 1f + fraction
                 val from = tabPositions[fromIndex]
                 val to = tabPositions[toIndex]
 

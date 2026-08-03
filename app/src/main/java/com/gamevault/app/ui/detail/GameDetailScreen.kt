@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -29,9 +31,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Circle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
@@ -41,17 +42,18 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -60,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -125,15 +128,30 @@ fun GameDetailScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::showEditNotes) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit notes")
-                    }
-                    IconButton(onClick = viewModel::showDeleteConfirm) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete game",
-                            tint = MaterialTheme.colorScheme.error,
-                        )
+                    var menuExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More options")
+                        }
+                        DropdownMenu(
+                            expanded = menuExpanded,
+                            onDismissRequest = { menuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Notes") },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.showEditNotes()
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Edit collections") },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.showCollectionPicker()
+                                },
+                            )
+                        }
                     }
                 },
             )
@@ -170,7 +188,13 @@ fun GameDetailScreen(
                         game = game,
                         isSaved = true,
                         addingToLibrary = false,
-                        onAddToLibrary = viewModel::showCollectionPicker,
+                        onRemoveFromLibrary = {
+                            viewModel.deleteGame {
+                                onDeleted?.invoke()
+                                onBack()
+                            }
+                        },
+                        onPickCollection = viewModel::showCollectionPicker,
                         onAdjustTime = { showTimeDialog = true },
                     )
                 }
@@ -208,14 +232,6 @@ fun GameDetailScreen(
                     )
                 }
 
-                // Collections section
-                item {
-                    CollectionsSection(
-                        gameCollections = uiState.gameCollections,
-                        onAddToCollection = viewModel::showCollectionPicker,
-                    )
-                }
-
                 // Routes section
                 item {
                     RoutesSectionHeader(onAddRoute = { name -> viewModel.addRoute(name) })
@@ -226,14 +242,6 @@ fun GameDetailScreen(
                         route = route,
                         onProgressChange = { viewModel.updateRouteProgress(route.id, it) },
                         onDelete = { viewModel.deleteRoute(route) },
-                    )
-                }
-
-                // Notes (read-only display + edit trigger)
-                item {
-                    NotesSection(
-                        notes = game.notes,
-                        onEdit = viewModel::showEditNotes,
                     )
                 }
 
@@ -301,33 +309,6 @@ fun GameDetailScreen(
                 viewModel.setManualPlayTime(minutes)
             },
             onDismiss = { showTimeDialog = false },
-        )
-    }
-
-    // Delete confirmation dialog
-    if (uiState.showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = viewModel::dismissDeleteConfirm,
-            title = { Text("Delete Game") },
-            text = {
-                Text("Are you sure you want to delete \"${uiState.game?.title ?: ""}\"? This cannot be undone.")
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteGame()
-                        onDeleted?.invoke()
-                        onBack()
-                    },
-                ) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::dismissDeleteConfirm) {
-                    Text("Cancel")
-                }
-            },
         )
     }
 
@@ -589,62 +570,6 @@ private fun PlaySessionControls(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun CollectionsSection(
-    gameCollections: List<com.gamevault.app.domain.model.Collection>,
-    onAddToCollection: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Collections", style = MaterialTheme.typography.titleSmall)
-                FilledTonalButton(onClick = onAddToCollection) {
-                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.width(4.dp))
-                    Text("Add", style = MaterialTheme.typography.labelSmall)
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (gameCollections.isEmpty()) {
-                Text(
-                    text = "Not in any collection",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                )
-            } else {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    gameCollections.forEach { collection ->
-                        AssistChip(
-                            onClick = { },
-                            label = {
-                                Text(collection.name, style = MaterialTheme.typography.labelSmall)
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Bookmark,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(14.dp),
-                                )
-                            },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
 private fun RoutesSectionHeader(
     onAddRoute: (String) -> Unit,
 ) {
@@ -713,44 +638,6 @@ private fun RouteItem(
     }
 }
 
-@Composable
-private fun NotesSection(
-    notes: String?,
-    onEdit: () -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Notes", style = MaterialTheme.typography.titleSmall)
-                IconButton(onClick = onEdit) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit notes", modifier = Modifier.size(18.dp))
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            if (notes != null) {
-                Text(
-                    text = notes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text(
-                    text = "No notes yet. Tap edit to add notes.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                )
-            }
-        }
-    }
-}
-
 private fun formatPlayTime(minutes: Long): String {
     val hours = minutes / 60
     val mins = minutes % 60
@@ -808,6 +695,8 @@ private fun GameDetailPreviewContent(
                             pickerOpen = true
                         }
                     },
+                    onRemoveFromLibrary = null,
+                    onPickCollection = null,
                     onAdjustTime = null,
                 )
             }
@@ -889,7 +778,9 @@ private fun DetailActionRow(
     game: com.gamevault.app.domain.model.Game,
     isSaved: Boolean,
     addingToLibrary: Boolean,
-    onAddToLibrary: () -> Unit,
+    onAddToLibrary: () -> Unit = {},
+    onRemoveFromLibrary: (() -> Unit)? = null,
+    onPickCollection: (() -> Unit)? = null,
     onAdjustTime: (() -> Unit)?,
 ) {
     Row(
@@ -900,12 +791,15 @@ private fun DetailActionRow(
             icon = {
                 Icon(
                     if (isSaved) Icons.Default.Check else Icons.Default.Add,
-                    contentDescription = null,
+                    contentDescription = if (isSaved)
+                        "Remove from library (tap) / Choose collection (long press)"
+                    else null,
                 )
             },
             label = if (isSaved) "In library" else if (addingToLibrary) "Adding..." else "Add to library",
             enabled = if (isSaved) true else !addingToLibrary,
-            onClick = onAddToLibrary,
+            onClick = if (isSaved) (onRemoveFromLibrary ?: {}) else onAddToLibrary,
+            onLongClick = if (isSaved) onPickCollection else null,
         )
         ActionButton(
             icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
@@ -940,17 +834,36 @@ private fun ActionButton(
     label: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(enabled = enabled, onClick = onClick),
     ) {
-        FilledTonalIconButton(
-            onClick = onClick,
-            enabled = enabled,
-            modifier = Modifier.size(44.dp),
+        Surface(
+            modifier = Modifier
+                .size(44.dp)
+                .combinedClickable(
+                    enabled = enabled,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                ),
+            shape = CircleShape,
+            color = if (enabled)
+                MaterialTheme.colorScheme.secondaryContainer
+            else
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f),
         ) {
-            icon()
+            Box(contentAlignment = Alignment.Center) {
+                CompositionLocalProvider(
+                    LocalContentColor provides
+                        (if (enabled)
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)),
+                ) {
+                    icon()
+                }
+            }
         }
         Spacer(Modifier.height(4.dp))
         Text(

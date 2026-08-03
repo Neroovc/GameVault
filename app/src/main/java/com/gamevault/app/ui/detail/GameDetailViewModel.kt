@@ -26,7 +26,6 @@ data class GameDetailUiState(
     val allCollections: List<Collection> = emptyList(),
     val gameCollections: List<Collection> = emptyList(),
     val showCollectionPicker: Boolean = false,
-    val showDeleteConfirm: Boolean = false,
     val showEditNotes: Boolean = false,
     val editNotesText: String = "",
 )
@@ -37,7 +36,6 @@ class GameDetailViewModel(
 ) : ViewModel() {
 
     private val _showCollectionPicker = MutableStateFlow(false)
-    private val _showDeleteConfirm = MutableStateFlow(false)
     private val _showEditNotes = MutableStateFlow(false)
     private val _editNotesText = MutableStateFlow("")
 
@@ -48,7 +46,6 @@ class GameDetailViewModel(
         repository.observeAllCollections(),
         repository.observeGameCollections(gameId),
         _showCollectionPicker,
-        _showDeleteConfirm,
         _showEditNotes,
         _editNotesText,
     ) { array ->
@@ -62,9 +59,8 @@ class GameDetailViewModel(
             allCollections = array[3] as List<Collection>,
             gameCollections = array[4] as List<Collection>,
             showCollectionPicker = array[5] as Boolean,
-            showDeleteConfirm = array[6] as Boolean,
-            showEditNotes = array[7] as Boolean,
-            editNotesText = array[8] as String,
+            showEditNotes = array[6] as Boolean,
+            editNotesText = array[7] as String,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -180,20 +176,12 @@ class GameDetailViewModel(
         }
     }
 
-    // ── Delete Game ─────────────────────────────────────────
+    // ── Delete / Remove from Library ───────────────────────
 
-    fun showDeleteConfirm() {
-        _showDeleteConfirm.value = true
-    }
-
-    fun dismissDeleteConfirm() {
-        _showDeleteConfirm.value = false
-    }
-
-    fun deleteGame() {
+    fun deleteGame(onDone: () -> Unit = {}) {
         viewModelScope.launch {
             repository.deleteGame(gameId)
-            _showDeleteConfirm.value = false
+            onDone()
         }
     }
 
