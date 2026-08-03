@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,6 +53,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabPosition
@@ -80,11 +80,15 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamevault.app.domain.model.Collection
@@ -166,7 +170,18 @@ fun LibraryScreen(
                                     .focusRequester(focusRequester),
                             )
                         } else {
-                            Text("GameVault")
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = "GameVault",
+                                    style = MaterialTheme.typography.titleLarge,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                CountBadge(
+                                    count = uiState.stripTabs.firstOrNull()?.count ?: 0,
+                                )
+                            }
                         }
                     },
                     scrollBehavior = scrollBehavior,
@@ -277,6 +292,7 @@ fun LibraryScreen(
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1,
                 ) { page ->
                     val displayItems = when {
                         uiState.groupBy != GroupBy.NONE && page == 0 -> uiState.displayItems.withHeaders
@@ -392,10 +408,23 @@ private fun CategoryStrip(
                 selected = selectedTabIndex == index,
                 onClick = { onTabSelected(index) },
                 text = {
-                    Text(
-                        text = "${tab.label} (${tab.count})",
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = tab.label,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        if (tab.count > 0) {
+                            Spacer(Modifier.width(4.dp))
+                            CountBadge(
+                                count = tab.count,
+                                style = MaterialTheme.typography.labelSmall,
+                                horizontalPadding = 8.dp,
+                                verticalPadding = 2.dp,
+                            )
+                        }
+                    }
                 },
             )
         }
@@ -405,6 +434,10 @@ private fun CategoryStrip(
 /**
  * Indicator that tracks the [pagerState]'s current page and its drag fraction,
  * so it slides continuously between tabs while swiping instead of jumping.
+ *
+ * The per-frame slide is driven entirely from a [graphicsLayer] transform
+ * (translationX + scaleX), so dragging never recomposes the indicator — only
+ * the layer updates.
  */
 @Composable
 private fun PagerStripIndicator(
@@ -413,46 +446,74 @@ private fun PagerStripIndicator(
 ) {
     if (tabPositions.isEmpty()) return
 
-    val page = pagerState.currentPage.coerceIn(tabPositions.indices)
-    val fraction = pagerState.currentPageOffsetFraction
-
-    val fromIndex: Int
-    val toIndex: Int
-    when {
-        fraction > 0f && page < tabPositions.lastIndex -> {
-            fromIndex = page
-            toIndex = page + 1
-        }
-        fraction < 0f && page > 0 -> {
-            fromIndex = page - 1
-            toIndex = page
-        }
-        else -> {
-            fromIndex = page
-            toIndex = page
-        }
-    }
-
-    val progress = abs(fraction)
-    val start = tabPositions[fromIndex].left +
-        (tabPositions[toIndex].left - tabPositions[fromIndex].left) * progress
-    val end = tabPositions[fromIndex].right +
-        (tabPositions[toIndex].right - tabPositions[fromIndex].right) * progress
-    val width = (end - start).coerceAtLeast(0.dp)
+    val currentPage = pagerState.currentPage.coerceIn(tabPositions.indices)
+    val baseWidth = tabPositions[currentPage].width
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .wrapContentSize(Alignment.BottomStart)
-            .offset(x = start, y = 0.dp)
-            .width(width)
+            .width(baseWidth)
             .height(StripIndicatorHeight)
             .clip(RoundedCornerShape(percent = 50))
+            .graphicsLayer {
+                val page = pagerState.currentPage.coerceIn(tabPositions.indices)
+                val fraction = pagerState.currentPageOffsetFraction
+
+                val fromIndex: Int
+                val toIndex: Int
+                when {
+                    fraction > 0f && page < tabPositions.lastIndex -> {
+                        fromIndex = page
+                        toIndex = page + 1
+                    }
+                    fraction < 0f && page > 0 -> {
+                        fromIndex = page - 1
+                        toIndex = page
+                    }
+                    else -> {
+                        fromIndex = page
+                        toIndex = page
+                    }
+                }
+
+                val progress = abs(fraction)
+                val from = tabPositions[fromIndex]
+                val to = tabPositions[toIndex]
+
+                val startX = from.left.toPx() + (to.left.toPx() - from.left.toPx()) * progress
+                val endX = from.right.toPx() + (to.right.toPx() - from.right.toPx()) * progress
+                translationX = startX
+                scaleX = (endX - startX) / baseWidth.toPx()
+                transformOrigin = TransformOrigin(0f, 0.5f)
+            }
             .background(MaterialTheme.colorScheme.primary),
     )
 }
 
 private val StripIndicatorHeight = 3.dp
+
+@Composable
+private fun CountBadge(
+    count: Int,
+    style: TextStyle = MaterialTheme.typography.labelMedium,
+    horizontalPadding: Dp = 10.dp,
+    verticalPadding: Dp = 4.dp,
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+    ) {
+        Text(
+            text = "$count",
+            style = style,
+            modifier = Modifier.padding(
+                horizontal = horizontalPadding,
+                vertical = verticalPadding,
+            ),
+        )
+    }
+}
 
 // ═══════════════════════════════════════════════════════════
 //  LIBRARY GRID PAGE
@@ -556,11 +617,7 @@ private fun GroupHeader(
             color = MaterialTheme.colorScheme.onSurface,
         )
         Spacer(Modifier.width(6.dp))
-        Text(
-            text = "($count)",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        CountBadge(count = count)
     }
 }
 
