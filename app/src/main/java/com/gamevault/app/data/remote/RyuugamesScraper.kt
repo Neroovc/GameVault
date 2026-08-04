@@ -10,6 +10,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.parser.Parser
 import java.net.URI
+import java.net.URLEncoder
 
 /**
  * Scrapes game metadata from RyuuGames (https://www.ryuugames.com).
@@ -18,7 +19,9 @@ import java.net.URI
  * (403), while POSTing the form field `s` to the homepage returns 200 with
  * results. Pagination reuses the same POST against /page/N/ (verified live:
  * pages 2 and 3 return 15 cards each); WordPress 404s once results run out,
- * so HTTP errors are ignored and the loop stops when a page yields no cards.
+ * so an out-of-range page stops the loop, while 403/429 or a Cloudflare
+ * challenge shell surfaces as [ScrapeBlockedException] instead of an empty
+ * result. A failed first-page POST falls back to a plain GET /?s=QUERY once.
  *
  * On list cards the src attribute is a base64 placeholder, so card
  * thumbnails must use data-img-url. Result hrefs may
@@ -46,22 +49,22 @@ class RyuugamesScraper {
      *
      * Returns the domain [SearchResult] directly (the scraper layer is the
      * only consumer of search results, so no local mirror type is needed).
+     *
+     * Failures are NOT silent: 403/429 answers and Cloudflare challenge shells
+     * throw [ScrapeBlockedException] (surfaced by the adapter as an error).
+     * Only a clean page with zero matching cards yields an empty list.
      */
     suspend fun search(query: String): List<SearchResult> {
-        return try {
-            val results = mutableListOf<SearchResult>()
-            var page = 1
-            while (page <= MAX_PAGES) {
-                val pageUrl = if (page == 1) BASE_URL else "$BASE_URL/page/$page/"
-                val cards = parseCards(fetchSearchPage(pageUrl, query))
-                if (cards.isEmpty()) break
-                results += cards
-                page++
-            }
-            results
-        } catch (e: Exception) {
-            emptyList()
+        val results = mutableListOf<SearchResult>()
+        var page = 1
+        while (page <= MAX_PAGES) {
+            val pageUrl = if (page == 1) BASE_URL else "$BASE_URL/page/$page/"
+            val cards = parseCards(fetchSearchPage(pageUrl, query))
+            if (cards.isEmpty()) break
+            results += cards
+            page++
         }
+        return results
     }
 
     /**
@@ -112,17 +115,59 @@ class RyuugamesScraper {
     // ── Private helpers ────────────────────────────────────
 
     private suspend fun fetchSearchPage(url: String, query: String): Document {
-        // Search is only served over POST. 4xx responses are parsed anyway
-        // (an exhausted /page/N/ returns 404 with an age-gate shell that has
-        // no cards) so pagination stops cleanly on empty pages.
-        return Jsoup.connect(url)
+        return try {
+            postSearchPage(url, query)
+        } catch (e: Exception) {
+            // POST is the canonical search path, but if it fails (blocked,
+            // timeout) a plain GET may still pass — retry once on the first
+            // page only; later pages rethrow.
+            if (url != BASE_URL) throw e
+            getSearchPage(query)
+        }
+    }
+
+    private suspend fun postSearchPage(url: String, query: String): Document {
+        // Search is only served over POST. Out-of-range /page/N/ returns 404
+        // with a card-less age-gate shell, so 404 is benign (pagination
+        // exhaustion); 403/429 and Cloudflare challenge shells are real blocks.
+        val response = Jsoup.connect(url)
             .userAgent(USER_AGENT)
             .timeout(TIMEOUT_MS.toInt())
             .followRedirects(true)
             .ignoreHttpErrors(true)
             .method(Connection.Method.POST)
             .data("s", query)
-            .post()
+            .execute()
+        return checkNotBlocked(response)
+    }
+
+    private suspend fun getSearchPage(query: String): Document {
+        val response = Jsoup.connect("$BASE_URL/?s=${URLEncoder.encode(query, "UTF-8")}")
+            .userAgent(USER_AGENT)
+            .timeout(TIMEOUT_MS.toInt())
+            .followRedirects(true)
+            .ignoreHttpErrors(true)
+            .execute()
+        return checkNotBlocked(response)
+    }
+
+    /** Throws [ScrapeBlockedException] for 403/429 or Cloudflare challenge shells. */
+    private fun checkNotBlocked(response: Connection.Response): Document {
+        val doc = response.parse()
+        if (response.statusCode() == 403 || response.statusCode() == 429 || isCloudflareChallenge(doc)) {
+            throw ScrapeBlockedException(
+                "Ryuugames blocked the request (Cloudflare). Open the site in a browser and try again.",
+            )
+        }
+        return doc
+    }
+
+    private fun isCloudflareChallenge(doc: Document): Boolean {
+        val text = doc.title() + " " + doc.body().text()
+        return text.contains("cloudflare", ignoreCase = true) ||
+            text.contains("just a moment", ignoreCase = true) ||
+            text.contains("captcha", ignoreCase = true) ||
+            text.contains("access denied", ignoreCase = true)
     }
 
     private suspend fun fetchDocument(url: String): Document {
@@ -134,23 +179,36 @@ class RyuugamesScraper {
     }
 
     private fun parseCards(doc: Document): List<SearchResult> {
-        return doc.select("div.td_module_1.td_module_wrap").mapNotNull { card ->
-            val link = card.selectFirst("h3.entry-title a[href]") ?: return@mapNotNull null
+        // Primary: the ThemeNova td_module_1 card. Fall back to generic
+        // WordPress article containers if the theme's markup drifts.
+        val cards = doc.select("div.td_module_1.td_module_wrap")
+            .takeIf { it.isNotEmpty() }
+            ?: doc.select("article")
+
+        return cards.mapNotNull { card ->
+            val link = card.selectFirst("h3.entry-title a[href]")
+                ?: card.selectFirst("h2.entry-title a[href]")
+                ?: card.selectFirst(".td-module-thumb a[href]")
+                ?: card.selectFirst("a[href^=\"https://www.ryuugames.com/\"]")
+                ?: return@mapNotNull null
             val href = link.attr("href")
             if (href.isBlank()) return@mapNotNull null
 
+            val thumbEl = card.selectFirst("img.entry-thumb, img")
             SearchResult(
                 title = link.text().trim()
                     .ifEmpty { link.attr("title").trim() }
                     .ifEmpty { "Unknown" },
                 // Strip ?_rt=...&_rt_nonce=... tracking params from result hrefs.
                 url = stripTrackingParams(normalizeUrl(href, BASE_URL)),
-                // src is a base64 placeholder on cards — data-img-url only.
-                thumbnailUrl = card.selectFirst("img.entry-thumb")
-                    ?.attr("data-img-url")?.trim()
-                    ?.takeIf { it.isNotBlank() },
+                // src is a base64 placeholder on td cards — data-img-url only;
+                // fall back to a real src when the fallback markup lacks it.
+                thumbnailUrl = thumbEl?.attr("data-img-url")?.trim()
+                    ?.takeIf { it.isNotBlank() }
+                    ?: thumbEl?.attr("src")?.trim()
+                        ?.takeIf { it.isNotBlank() && !it.startsWith("data:") },
             )
-        }
+        }.distinctBy { it.url }
     }
 
     private fun extractTitle(doc: Document): String? {

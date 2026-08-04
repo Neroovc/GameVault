@@ -214,20 +214,36 @@ class FapForFunScraper {
 
     private fun extractCoverUrl(doc: Document, pageUrl: String): String? {
         val selectors = listOf(
-            // First image in the post body (wp-image-* screenshots).
-            ".entry-content img",
+            // Prefer the full-size og:image / twitter:image over body images,
+            // which WordPress serves as -300x200-style resized variants.
             "meta[property=\"og:image\"]",
+            "meta[property=\"twitter:image\"]",
+            "meta[name=\"twitter:image\"]",
+            // Last resort: first image in the post body (wp-image-* screenshots).
+            ".entry-content img",
         )
 
         for (selector in selectors) {
             val el = doc.selectFirst(selector) ?: continue
             val src = el.attr("content").ifBlank { el.attr("src") }
             if (src.isNotBlank() && !src.startsWith("data:image")) {
-                return normalizeUrl(src, pageUrl)
+                return normalizeUrl(stripWordPressResize(src), pageUrl)
             }
         }
 
         return null
+    }
+
+    /**
+     * Upgrades a WordPress resized variant to the full-size image URL, e.g.
+     *   https://.../image-300x200.jpg -> https://.../image.jpg
+     * Also strips the -scaled / -rotated suffixes WordPress 5.3+ adds.
+     * URLs without such a suffix pass through unchanged.
+     */
+    private fun stripWordPressResize(url: String): String {
+        val resizeSuffix = Regex("""-(?:\d{2,4}x\d{2,4}|scaled|rotated)(?=\.[a-zA-Z]{2,4}$)""")
+        // Applied twice so "image-300x200-scaled.jpg" -> "image.jpg" in one pass.
+        return resizeSuffix.replace(resizeSuffix.replace(url, ""), "")
     }
 
     private fun extractTags(doc: Document): List<Tag> {

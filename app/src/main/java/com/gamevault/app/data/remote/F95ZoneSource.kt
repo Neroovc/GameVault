@@ -43,6 +43,8 @@ class F95ZoneSource(
                     developer = sr.author,
                 )
             })
+        } catch (e: ScrapeBlockedException) {
+            SourceResult.Error(e.message ?: "Search unavailable", e)
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
             SourceResult.Error("Search failed: $msg", e)

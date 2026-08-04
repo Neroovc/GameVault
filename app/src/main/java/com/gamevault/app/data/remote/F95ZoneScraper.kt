@@ -4,10 +4,14 @@ import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.SourceType
 import com.gamevault.app.domain.model.Tag
+import org.jsoup.Connection
+import org.jsoup.HttpStatusException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.net.URLEncoder
+import java.util.concurrent.Semaphore
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Scrapes game metadata from F95Zone threads.
@@ -24,6 +28,17 @@ class F95ZoneScraper {
             "(KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
         private const val TIMEOUT_MS = 30_000L
         private const val MAX_TAGS = 12
+
+        // Brave throttling: searches spaced >= 1.5s apart, shared across all
+        // instances so nothing ever bursts the search endpoint.
+        private const val BRAVE_MIN_INTERVAL_MS = 1_500L
+        private val lastBraveSearchTime = AtomicLong(0L)
+
+        // f95zone.to page-fetch taming: at most 4 concurrent fetches, spaced
+        // >= 400ms apart, so the grid's ~20-fetch cover burst stays gentle.
+        private const val PAGE_FETCH_MIN_INTERVAL_MS = 400L
+        private const val MAX_CONCURRENT_PAGE_FETCHES = 4
+        private val requestLimiter = Semaphore(MAX_CONCURRENT_PAGE_FETCHES)
     }
 
     /**
@@ -73,6 +88,11 @@ class F95ZoneScraper {
      *   title     = div.title.search-snippet-title
      *   snippet   = .snippet-description
      *
+     * Failures are NOT silent: Brave challenge shells (200 with no snippets)
+     * and HTTP blocks (429/403) throw [ScrapeBlockedException], which the
+     * adapters surface as a visible error. Only a clean 200 with genuinely no
+     * results returns an empty list.
+     *
      * @param cookie Kept in the signature for API stability (used by scrapeGame);
      *               Brave search works without it.
      */
@@ -80,7 +100,7 @@ class F95ZoneScraper {
         return try {
             val searchUrl = "https://search.brave.com/search?q=" +
                 URLEncoder.encode("site:f95zone.to $query", "UTF-8")
-            val doc = fetchDocument(searchUrl, cookie)
+            val doc = fetchBraveSearch(searchUrl, cookie).parse()
 
             val blocks = doc.select("div.snippet")
             val results = if (blocks.isNotEmpty()) {
@@ -102,9 +122,27 @@ class F95ZoneScraper {
                     )
                 }
             }
+
+            // A CAPTCHA/challenge shell carries no snippets and no thread links.
+            if (results.isEmpty() && isSearchBlocked(doc)) {
+                throw ScrapeBlockedException(
+                    "Search engine blocked the request (rate limit). Try again in a minute.",
+                )
+            }
             results.take(20)
+        } catch (e: ScrapeBlockedException) {
+            throw e
+        } catch (e: HttpStatusException) {
+            throw ScrapeBlockedException(
+                if (e.statusCode == 403 || e.statusCode == 429) {
+                    "Search engine blocked the request (rate limit). Try again in a minute."
+                } else {
+                    "Search engine returned HTTP ${e.statusCode}. Try again in a minute."
+                },
+            )
         } catch (e: Exception) {
-            emptyList()
+            val msg = e.message ?: e.javaClass.simpleName
+            throw ScrapeBlockedException("Search failed: $msg. Try again in a minute.")
         }
     }
 
@@ -136,6 +174,38 @@ class F95ZoneScraper {
             .ifEmpty { "Unknown" }
     }
 
+    /**
+     * Fetches a Brave search page under the shared search throttle (at most one
+     * request per [BRAVE_MIN_INTERVAL_MS] across all instances). HTTP errors are
+     * NOT ignored, so 429/403 surface as [HttpStatusException] instead of
+     * parsing a block page as an empty result. Runs on the IO dispatcher, so
+     * the sleep is acceptable.
+     */
+    private suspend fun fetchBraveSearch(url: String, cookie: String?): Connection.Response {
+        val now = System.currentTimeMillis()
+        val waitMs = BRAVE_MIN_INTERVAL_MS - (now - lastBraveSearchTime.get())
+        if (waitMs > 0) Thread.sleep(waitMs)
+        lastBraveSearchTime.updateAndGet { prev -> maxOf(prev, now + waitMs.coerceAtLeast(0)) }
+
+        val conn = Jsoup.connect(url)
+            .userAgent(USER_AGENT)
+            .timeout(TIMEOUT_MS.toInt())
+            .followRedirects(true)
+
+        if (cookie != null) {
+            conn.cookie("xf_session", cookie)
+        }
+
+        return conn.execute()
+    }
+
+    /** True when [doc] is a Brave CAPTCHA/challenge shell (200 but gated). */
+    private fun isSearchBlocked(doc: Document): Boolean {
+        val text = doc.title() + " " + doc.body().text()
+        return text.contains("captcha", ignoreCase = true) ||
+            text.contains("challenge", ignoreCase = true)
+    }
+
     private suspend fun fetchDocument(url: String, cookie: String?): Document {
         val conn = Jsoup.connect(url)
             .userAgent(USER_AGENT)
@@ -146,7 +216,16 @@ class F95ZoneScraper {
             conn.cookie("xf_session", cookie)
         }
 
-        return conn.get()
+        // Cap concurrency and space out f95zone.to page fetches (covers,
+        // details): the grid fires ~20 fetchCover calls at once, which trips
+        // the site's 403. Runs on the IO dispatcher, so the sleep is fine.
+        requestLimiter.acquire()
+        try {
+            Thread.sleep(PAGE_FETCH_MIN_INTERVAL_MS)
+            return conn.get()
+        } finally {
+            requestLimiter.release()
+        }
     }
 
     private fun extractTitle(doc: Document): String? {

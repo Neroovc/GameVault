@@ -30,6 +30,8 @@ class RyuugamesSource(
         return try {
             // The scraper already returns domain SearchResults directly.
             SourceResult.Success(scraper.search(query))
+        } catch (e: ScrapeBlockedException) {
+            SourceResult.Error(e.message ?: "Search unavailable", e)
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
             SourceResult.Error("Search failed: $msg", e)

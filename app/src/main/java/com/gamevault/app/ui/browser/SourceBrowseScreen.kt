@@ -72,6 +72,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.Semaphore
 
 /**
  * Browse a single game source: debounced search, result grid, detail fetch
@@ -124,6 +125,11 @@ fun SourceBrowseScreen(
     // Screen-level cache of lazily fetched covers: url -> cover (null = fetched
     // and failed, so we never retry within this screen session).
     val coverCache = remember { mutableStateMapOf<String, String?>() }
+
+    // Cap concurrent cover fetches across the grid: a full grid fires ~20
+    // fetchCover calls at once. Scraper-side throttles also apply; this just
+    // stops the burst at the screen boundary.
+    val coverLimiter = remember { Semaphore(4) }
 
     // Search runs ONLY when the user presses Enter (IME action). Each search
     // hits external engines and can trigger per-card cover fetches, so typing
@@ -265,6 +271,7 @@ fun SourceBrowseScreen(
                                 result = result,
                                 source = source,
                                 coverCache = coverCache,
+                                coverLimiter = coverLimiter,
                                 loading = detailLoadingUrl == result.url,
                                 onClick = {
                                     // One detail fetch at a time; give the card
@@ -353,6 +360,7 @@ private fun SearchResultCard(
     result: SearchResult,
     source: GameSource,
     coverCache: MutableMap<String, String?>,
+    coverLimiter: Semaphore,
     loading: Boolean,
     onClick: () -> Unit,
 ) {
@@ -362,7 +370,16 @@ private fun SearchResultCard(
     var cover by remember(result.url) { mutableStateOf(coverCache[result.url] ?: result.thumbnailUrl) }
     LaunchedEffect(result.url, cover) {
         if (cover == null && !coverCache.containsKey(result.url)) {
-            val fetched = withContext(Dispatchers.IO) { source.fetchCover(result.url) }
+            val fetched = withContext(Dispatchers.IO) {
+                // try/finally so a cancelled card (scrolled away) never leaks a
+                // permit; acquire() itself holds no permit while waiting.
+                coverLimiter.acquire()
+                try {
+                    source.fetchCover(result.url)
+                } finally {
+                    coverLimiter.release()
+                }
+            }
             coverCache[result.url] = fetched
             cover = fetched
         }
