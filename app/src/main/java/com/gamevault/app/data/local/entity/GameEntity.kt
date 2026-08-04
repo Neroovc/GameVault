@@ -28,6 +28,9 @@ data class GameEntity(
     @ColumnInfo(name = "cover_url")
     val coverUrl: String? = null,
 
+    @ColumnInfo(name = "local_cover_path")
+    val localCoverPath: String? = null,
+
     val description: String? = null,
     val developer: String? = null,
 
@@ -69,6 +72,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     id = id,
     title = title,
     coverUrl = coverUrl,
+    localCoverPath = localCoverPath,
     description = description,
     developer = developer,
     engine = engine?.let { runCatching { GameEngine.valueOf(it) }.getOrNull() },
@@ -90,6 +94,7 @@ fun Game.toEntity(): GameEntity = GameEntity(
     id = id,
     title = title,
     coverUrl = coverUrl,
+    localCoverPath = localCoverPath,
     description = description,
     developer = developer,
     engine = engine?.name,

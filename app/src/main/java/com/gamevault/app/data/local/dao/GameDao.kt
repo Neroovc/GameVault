@@ -69,6 +69,9 @@ interface GameDao {
     @Query("UPDATE games SET in_library = :inLibrary WHERE id = :gameId")
     suspend fun updateGameLibraryState(gameId: Long, inLibrary: Boolean)
 
+    @Query("UPDATE games SET local_cover_path = :path WHERE id = :gameId")
+    suspend fun updateGameLocalCover(gameId: Long, path: String?)
+
     @Query("UPDATE games SET status = :status WHERE id IN (:gameIds)")
     suspend fun updateGameStatusBulk(gameIds: List<Long>, status: String)
 

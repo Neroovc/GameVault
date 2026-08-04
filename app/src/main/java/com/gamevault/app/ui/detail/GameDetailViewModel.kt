@@ -190,6 +190,15 @@ class GameDetailViewModel(
         }
     }
 
+    // ── Custom cover ───────────────────────────────────────
+
+    fun setLocalCover(path: String?) {
+        viewModelScope.launch {
+            val current = uiState.value.game ?: return@launch
+            repository.setGameLocalCover(current.id, path)
+        }
+    }
+
     // ── Edit Notes ──────────────────────────────────────────
 
     fun showEditNotes() {

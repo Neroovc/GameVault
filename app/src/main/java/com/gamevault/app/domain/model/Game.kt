@@ -7,6 +7,7 @@ data class Game(
     val id: Long = 0,
     val title: String,
     val coverUrl: String? = null,
+    val localCoverPath: String? = null,   // absolute path to a user-picked cover (device-local)
     val description: String? = null,
     val developer: String? = null,
     val engine: GameEngine? = null,

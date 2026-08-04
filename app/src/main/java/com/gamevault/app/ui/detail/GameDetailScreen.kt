@@ -2,8 +2,12 @@ package com.gamevault.app.ui.detail
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,10 +36,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Repeat
@@ -60,6 +67,8 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -70,23 +79,30 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import com.gamevault.app.data.local.downloadCoverToDevice
+import com.gamevault.app.data.local.savePickedImage
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.RouteStatus
 import com.gamevault.app.domain.model.SourceType
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -119,7 +135,10 @@ fun GameDetailScreen(
 
     // Saved-game mode: the caller must provide a viewModel.
     val uiState by viewModel!!.uiState.collectAsState()
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
     var showTimeDialog by remember { mutableStateOf(false) }
+    var coverViewerOpen by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -159,6 +178,7 @@ fun GameDetailScreen(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         if (uiState.isLoading || uiState.game == null) {
             Box(
@@ -183,6 +203,7 @@ fun GameDetailScreen(
                     GameHeader(
                         game = game,
                         onRatingChange = viewModel::updatePersonalRating,
+                        onCoverClick = { coverViewerOpen = true },
                     )
                 }
 
@@ -360,6 +381,21 @@ fun GameDetailScreen(
             },
         )
     }
+
+    // Fullscreen cover viewer
+    if (coverViewerOpen) {
+        uiState.game?.let { game ->
+            CoverViewerDialog(
+                cover = game.localCoverPath ?: game.coverUrl,
+                gameId = game.id,
+                gameTitle = game.title,
+                canCustomize = true,
+                onSetCustomCover = viewModel::setLocalCover,
+                onShowMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+                onDismiss = { coverViewerOpen = false },
+            )
+        }
+    }
 }
 
 private fun statusMetaIcon(status: GameStatus): ImageVector = when (status) {
@@ -376,6 +412,7 @@ private fun GameHeader(
     game: com.gamevault.app.domain.model.Game,
     onRatingChange: ((Float) -> Unit)? = null,
     sourceName: String? = null,
+    onCoverClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -384,12 +421,17 @@ private fun GameHeader(
         Card(
             modifier = Modifier
                 .width(120.dp)
-                .aspectRatio(3f / 4f),
+                .aspectRatio(3f / 4f)
+                .clickable(
+                    enabled = onCoverClick != null &&
+                        (game.coverUrl != null || game.localCoverPath != null),
+                    onClick = { onCoverClick?.invoke() },
+                ),
             shape = RoundedCornerShape(12.dp),
         ) {
-            if (game.coverUrl != null) {
+            if (game.coverUrl != null || game.localCoverPath != null) {
                 AsyncImage(
-                    model = game.coverUrl,
+                    model = game.localCoverPath ?: game.coverUrl,
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop,
@@ -679,6 +721,10 @@ private fun GameDetailPreviewContent(
 ) {
     var pickerOpen by remember { mutableStateOf(false) }
     var checkedIds by remember { mutableStateOf(initialCollectionIds.toSet()) }
+    var aboutExpanded by remember { mutableStateOf(false) }
+    var coverViewerOpen by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     Scaffold(
         topBar = {
@@ -691,6 +737,7 @@ private fun GameDetailPreviewContent(
                 },
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
         LazyColumn(
             modifier = Modifier
@@ -701,7 +748,11 @@ private fun GameDetailPreviewContent(
         ) {
             // Header: cover + title/developer/engine/source (no rating).
             item {
-                GameHeader(game = game, sourceName = sourceName)
+                GameHeader(
+                    game = game,
+                    sourceName = sourceName,
+                    onCoverClick = { coverViewerOpen = true },
+                )
             }
 
             // Quick actions: add to library, play time (disabled), soon (disabled), web
@@ -723,13 +774,12 @@ private fun GameDetailPreviewContent(
                 )
             }
 
-            // Description
+            // Description (state hoisted to the composable body so it survives scrolls)
             item {
-                var expanded by remember { mutableStateOf(false) }
                 AboutSection(
                     game = game,
-                    expanded = expanded,
-                    onToggle = { expanded = !expanded },
+                    expanded = aboutExpanded,
+                    onToggle = { aboutExpanded = !aboutExpanded },
                 )
             }
 
@@ -759,6 +809,20 @@ private fun GameDetailPreviewContent(
                 onAddToLibrary?.invoke(checkedIds.toList())
             },
             onDismiss = { pickerOpen = false },
+        )
+    }
+
+    // Fullscreen cover viewer — preview games aren't saved yet, so the custom
+    // photo action is not offered; only Download and Exit apply.
+    if (coverViewerOpen) {
+        CoverViewerDialog(
+            cover = game.coverUrl,
+            gameId = game.id,
+            gameTitle = game.title,
+            canCustomize = false,
+            onSetCustomCover = {},
+            onShowMessage = { message -> scope.launch { snackbarHostState.showSnackbar(message) } },
+            onDismiss = { coverViewerOpen = false },
         )
     }
 }
@@ -886,6 +950,116 @@ private fun DetailActionRow(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun CoverViewerDialog(
+    cover: String?,
+    gameId: Long,
+    gameTitle: String,
+    canCustomize: Boolean,
+    onSetCustomCover: (String) -> Unit,
+    onShowMessage: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var downloading by remember { mutableStateOf(false) }
+
+    // System photo picker — no storage permissions needed (API 19+).
+    // activity-compose 1.9.3 ships PickVisualMedia, so no legacy fallback.
+    val photoPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                val path = savePickedImage(context, uri, gameId)
+                if (path != null) {
+                    onSetCustomCover(path)
+                    onDismiss()
+                } else {
+                    onShowMessage("Failed to save custom cover")
+                }
+            }
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        // Full-screen black viewer. The whole Box is clickable so tapping
+        // anywhere (image included) dismisses.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable(onClick = onDismiss),
+        ) {
+            AsyncImage(
+                model = cover,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit,
+            )
+
+            // Bottom action bar. Surface(onClick = {}) consumes taps on the bar
+            // itself so they don't fall through to the dismiss layer.
+            Surface(
+                onClick = {},
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth(),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    ActionButton(
+                        icon = { Icon(Icons.Filled.Download, contentDescription = null) },
+                        label = "Download",
+                        enabled = cover != null && !downloading,
+                        onClick = {
+                            if (cover != null) {
+                                downloading = true
+                                scope.launch {
+                                    val message = downloadCoverToDevice(context, cover, gameTitle)
+                                    downloading = false
+                                    onShowMessage(message)
+                                }
+                            }
+                        },
+                    )
+                    if (canCustomize) {
+                        ActionButton(
+                            icon = { Icon(Icons.Filled.PhotoLibrary, contentDescription = null) },
+                            label = "Custom photo",
+                            enabled = true,
+                            onClick = {
+                                photoPicker.launch(
+                                    PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                        )
+                    }
+                    ActionButton(
+                        icon = { Icon(Icons.Filled.Close, contentDescription = null) },
+                        label = "Exit",
+                        enabled = true,
+                        onClick = onDismiss,
+                    )
+                }
+            }
+        }
     }
 }
 

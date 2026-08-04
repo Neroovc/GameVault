@@ -90,6 +90,10 @@ class GameRepositoryImpl(
         gameDao.updateGameLibraryState(gameId, inLibrary)
     }
 
+    override suspend fun setGameLocalCover(gameId: Long, path: String?) {
+        gameDao.updateGameLocalCover(gameId, path)
+    }
+
     override suspend fun deleteGame(gameId: Long) {
         gameDao.deleteGameById(gameId)
     }

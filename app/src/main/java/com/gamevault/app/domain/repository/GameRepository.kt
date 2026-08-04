@@ -28,6 +28,7 @@ interface GameRepository {
     suspend fun updateGame(game: Game)
     suspend fun updateGamePlayTime(gameId: Long, minutes: Long)
     suspend fun setGameInLibrary(gameId: Long, inLibrary: Boolean)
+    suspend fun setGameLocalCover(gameId: Long, path: String?)
     suspend fun deleteGame(gameId: Long)
     suspend fun getGameCount(): Int
 
