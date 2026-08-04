@@ -17,6 +17,7 @@ data class Game(
     val dateAdded: Long = System.currentTimeMillis(),
     val lastPlayed: Long? = null,
     val playTimeMinutes: Long = 0,
+    val inLibrary: Boolean = true,           // soft flag; row stays when unmarked
     val notes: String? = null,
     val f95Url: String? = null,
     val sourceType: SourceType = SourceType.MANUAL,

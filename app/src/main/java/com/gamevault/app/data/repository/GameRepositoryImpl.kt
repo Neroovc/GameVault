@@ -86,6 +86,10 @@ class GameRepositoryImpl(
         gameDao.updatePlayTimeMinutes(gameId, minutes)
     }
 
+    override suspend fun setGameInLibrary(gameId: Long, inLibrary: Boolean) {
+        gameDao.updateGameLibraryState(gameId, inLibrary)
+    }
+
     override suspend fun deleteGame(gameId: Long) {
         gameDao.deleteGameById(gameId)
     }

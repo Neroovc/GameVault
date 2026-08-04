@@ -176,12 +176,17 @@ class GameDetailViewModel(
         }
     }
 
-    // ── Delete / Remove from Library ───────────────────────
+    // ── Library toggle (soft unmark — row is kept) ────────
 
-    fun deleteGame(onDone: () -> Unit = {}) {
+    fun removeFromLibrary() {
         viewModelScope.launch {
-            repository.deleteGame(gameId)
-            onDone()
+            repository.setGameInLibrary(gameId, false)
+        }
+    }
+
+    fun addToLibrary() {
+        viewModelScope.launch {
+            repository.setGameInLibrary(gameId, true)
         }
     }
 

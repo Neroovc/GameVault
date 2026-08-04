@@ -35,6 +35,7 @@ data class BackupData(
 
 data class BackupGame(
     val title: String,
+    val inLibrary: Boolean = true,
     val coverUrl: String? = null,
     val description: String? = null,
     val developer: String? = null,
@@ -110,7 +111,7 @@ class GameVaultBackup(
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 
     suspend fun exportToJson(): String {
-        val allGames = gameDao.getAllGames()
+        val allGames = gameDao.getAllGamesUnfiltered()
         val allRoutes = routeDao.getAllRoutes()
         val allSessions = sessionDao.getAllSessions()
         val allTags = tagDao.getAllTags()
@@ -130,6 +131,7 @@ class GameVaultBackup(
             games = allGames.map { gwr ->
                 BackupGame(
                     title = gwr.game.title,
+                    inLibrary = gwr.game.inLibrary,
                     coverUrl = gwr.game.coverUrl,
                     description = gwr.game.description,
                     developer = gwr.game.developer,
@@ -220,6 +222,7 @@ class GameVaultBackup(
                 val id = gameDao.insertGame(
                     GameEntity(
                         title = bg.title,
+                        inLibrary = bg.inLibrary,
                         coverUrl = bg.coverUrl,
                         description = bg.description,
                         developer = bg.developer,

@@ -50,6 +50,9 @@ data class GameEntity(
     @ColumnInfo(name = "play_time_minutes")
     val playTimeMinutes: Long = 0,
 
+    @ColumnInfo(name = "in_library")
+    val inLibrary: Boolean = true,
+
     val notes: String? = null,
 
     @ColumnInfo(name = "f95_url")
@@ -76,6 +79,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     dateAdded = dateAdded,
     lastPlayed = lastPlayed,
     playTimeMinutes = playTimeMinutes,
+    inLibrary = inLibrary,
     notes = notes,
     f95Url = f95Url,
     sourceType = runCatching { SourceType.valueOf(sourceType) }.getOrElse { SourceType.MANUAL },
@@ -96,6 +100,7 @@ fun Game.toEntity(): GameEntity = GameEntity(
     dateAdded = dateAdded,
     lastPlayed = lastPlayed,
     playTimeMinutes = playTimeMinutes,
+    inLibrary = inLibrary,
     notes = notes,
     f95Url = f95Url,
     sourceType = sourceType.name,

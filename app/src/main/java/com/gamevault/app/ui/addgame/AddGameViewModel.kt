@@ -125,7 +125,23 @@ class AddGameViewModel(
                 sourceType = state.sourceType,
                 sourceUrl = state.sourceUrl.ifBlank { null },
             )
-            val savedId = gameRepository.saveGame(game)
+            val savedId = run {
+                // Dedup guard: f95_url is UNIQUE and insertGame uses REPLACE, so
+                // re-adding a soft-unmarked game by URL would delete the surviving
+                // row and cascade its children (routes, play sessions, cross-refs,
+                // notes, status, rating). Mirror the browser path: flip the flag
+                // back instead of re-inserting.
+                val existing = state.f95Url.ifBlank { null }?.let { gameRepository.getGameBySourceUrl(it) }
+                    ?: state.sourceUrl.ifBlank { null }?.let { gameRepository.getGameBySourceUrl(it) }
+                if (existing != null) {
+                    if (!existing.inLibrary) {
+                        gameRepository.setGameInLibrary(existing.id, true)
+                    }
+                    existing.id
+                } else {
+                    gameRepository.saveGame(game)
+                }
+            }
             val defaultCollectionId = appSettings.defaultCollectionId.first()
             if (defaultCollectionId != null) {
                 gameRepository.addGameToCollection(savedId, defaultCollectionId)

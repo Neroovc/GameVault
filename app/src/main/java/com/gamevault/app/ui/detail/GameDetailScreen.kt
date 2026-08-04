@@ -187,14 +187,10 @@ fun GameDetailScreen(
                 item {
                     DetailActionRow(
                         game = game,
-                        isSaved = true,
+                        isSaved = game.inLibrary,
                         addingToLibrary = false,
-                        onRemoveFromLibrary = {
-                            viewModel.deleteGame {
-                                onDeleted?.invoke()
-                                onBack()
-                            }
-                        },
+                        onAddToLibrary = { viewModel.addToLibrary() },
+                        onRemoveFromLibrary = { viewModel.removeFromLibrary() },
                         onPickCollection = viewModel::showCollectionPicker,
                         onAdjustTime = { showTimeDialog = true },
                     )

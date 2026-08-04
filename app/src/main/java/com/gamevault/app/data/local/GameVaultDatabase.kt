@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.gamevault.app.data.local.converter.Converters
 import com.gamevault.app.data.local.dao.CollectionDao
 import com.gamevault.app.data.local.dao.GameCollectionDao
@@ -30,7 +32,7 @@ import com.gamevault.app.data.local.entity.TagEntity
         GameTagCrossRef::class,
         GameCollectionCrossRef::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class GameVaultDatabase : RoomDatabase() {
@@ -46,12 +48,19 @@ abstract class GameVaultDatabase : RoomDatabase() {
     companion object {
         private const val DB_NAME = "gamevault.db"
 
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE games ADD COLUMN in_library INTEGER NOT NULL DEFAULT 1")
+            }
+        }
+
         fun create(context: Context): GameVaultDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 GameVaultDatabase::class.java,
                 DB_NAME,
             )
+                .addMigrations(MIGRATION_2_3)
                 .fallbackToDestructiveMigration()
                 .build()
         }

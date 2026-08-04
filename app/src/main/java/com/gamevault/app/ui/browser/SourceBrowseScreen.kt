@@ -317,7 +317,18 @@ fun SourceBrowseScreen(
                         val existing = game.f95Url?.let { gameRepository.getGameBySourceUrl(it) }
                             ?: game.sourceUrl?.let { gameRepository.getGameBySourceUrl(it) }
                         if (existing != null) {
-                            snackbarMessage = "Already in library"
+                            if (existing.inLibrary) {
+                                snackbarMessage = "Already in library"
+                            } else {
+                                // Row survives unmarking, so re-adding must not
+                                // re-insert (REPLACE would nuke children). Flip
+                                // the flag back and rejoin the chosen collections.
+                                gameRepository.setGameInLibrary(existing.id, true)
+                                collectionIds.forEach { id ->
+                                    gameRepository.addGameToCollection(existing.id, id)
+                                }
+                                snackbarMessage = "Added to library"
+                            }
                             return@launch
                         }
                         // saveGame returns the new row id, then the game lands in

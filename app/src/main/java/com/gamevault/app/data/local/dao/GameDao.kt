@@ -15,12 +15,16 @@ import kotlinx.coroutines.flow.Flow
 interface GameDao {
 
     @Transaction
-    @Query("SELECT * FROM games ORDER BY date_added DESC")
+    @Query("SELECT * FROM games WHERE in_library = 1 ORDER BY date_added DESC")
     fun getAllGamesFlow(): Flow<List<GameWithRelations>>
 
     @Transaction
-    @Query("SELECT * FROM games ORDER BY date_added DESC")
+    @Query("SELECT * FROM games WHERE in_library = 1 ORDER BY date_added DESC")
     suspend fun getAllGames(): List<GameWithRelations>
+
+    @Transaction
+    @Query("SELECT * FROM games ORDER BY date_added DESC")
+    suspend fun getAllGamesUnfiltered(): List<GameWithRelations>
 
     @Transaction
     @Query("SELECT * FROM games WHERE id = :gameId")
@@ -31,18 +35,18 @@ interface GameDao {
     suspend fun getGameById(gameId: Long): GameWithRelations?
 
     @Transaction
-    @Query("SELECT * FROM games WHERE title LIKE '%' || :query || '%' ESCAPE '\\' ORDER BY date_added DESC")
+    @Query("SELECT * FROM games WHERE title LIKE '%' || :query || '%' ESCAPE '\\' AND in_library = 1 ORDER BY date_added DESC")
     fun searchGamesFlow(query: String): Flow<List<GameWithRelations>>
 
     @Transaction
-    @Query("SELECT * FROM games WHERE status = :status ORDER BY date_added DESC")
+    @Query("SELECT * FROM games WHERE status = :status AND in_library = 1 ORDER BY date_added DESC")
     fun getGamesByStatusFlow(status: String): Flow<List<GameWithRelations>>
 
     @Transaction
     @Query("""
         SELECT * FROM games
         INNER JOIN game_collection_cross_ref ON games.id = game_collection_cross_ref.game_id
-        WHERE game_collection_cross_ref.collection_id = :collectionId
+        WHERE game_collection_cross_ref.collection_id = :collectionId AND games.in_library = 1
         ORDER BY games.date_added DESC
     """)
     fun getGamesInCollectionFlow(collectionId: Long): Flow<List<GameWithRelations>>
@@ -59,8 +63,11 @@ interface GameDao {
     @Query("DELETE FROM games WHERE id = :gameId")
     suspend fun deleteGameById(gameId: Long)
 
-    @Query("SELECT COUNT(*) FROM games")
+    @Query("SELECT COUNT(*) FROM games WHERE in_library = 1")
     suspend fun getGameCount(): Int
+
+    @Query("UPDATE games SET in_library = :inLibrary WHERE id = :gameId")
+    suspend fun updateGameLibraryState(gameId: Long, inLibrary: Boolean)
 
     @Query("UPDATE games SET status = :status WHERE id IN (:gameIds)")
     suspend fun updateGameStatusBulk(gameIds: List<Long>, status: String)
