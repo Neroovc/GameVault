@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Circle
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Pause
@@ -51,6 +52,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -167,6 +169,7 @@ fun GameDetailScreen(
             }
         } else {
             val game = uiState.game!!
+            var aboutExpanded by remember { mutableStateOf(false) }
 
             LazyColumn(
                 modifier = Modifier
@@ -196,9 +199,31 @@ fun GameDetailScreen(
                     )
                 }
 
-                // Description (Mihon parity — was missing from the detail screen)
+                // Notes — visible above the description, separated by a divider
+                if (!game.notes.isNullOrBlank()) {
+                    item {
+                        NotesSection(
+                            notes = game.notes,
+                            showEditButton = aboutExpanded,
+                            onEdit = viewModel::showEditNotes,
+                        )
+                    }
+                    item {
+                        HorizontalDivider(
+                            modifier = Modifier.fillMaxWidth(),
+                            thickness = 1.dp,
+                            color = MaterialTheme.colorScheme.outlineVariant,
+                        )
+                    }
+                }
+
+                // Description, plain text (no background container)
                 item {
-                    AboutSection(game = game)
+                    AboutSection(
+                        game = game,
+                        expanded = aboutExpanded,
+                        onToggle = { aboutExpanded = !aboutExpanded },
+                    )
                 }
 
                 // Scraped genre tags
@@ -700,7 +725,12 @@ private fun GameDetailPreviewContent(
 
             // Description
             item {
-                AboutSection(game = game)
+                var expanded by remember { mutableStateOf(false) }
+                AboutSection(
+                    game = game,
+                    expanded = expanded,
+                    onToggle = { expanded = !expanded },
+                )
             }
 
             // Scraped genre tags
@@ -734,39 +764,73 @@ private fun GameDetailPreviewContent(
 }
 
 @Composable
-private fun AboutSection(game: com.gamevault.app.domain.model.Game) {
-    var expanded by remember { mutableStateOf(false) }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = !expanded }
-                .animateContentSize()
-                .padding(16.dp),
+private fun NotesSection(
+    notes: String?,
+    showEditButton: Boolean,
+    onEdit: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("About", style = MaterialTheme.typography.titleSmall)
-                Text(
-                    text = if (expanded) "Show less" else "Show more",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
+            Text("Notes", style = MaterialTheme.typography.titleSmall)
+            // Edit note appears only when the description below is expanded,
+            // keeping the collapsed view clean.
+            if (showEditButton) {
+                TextButton(onClick = onEdit) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text("Edit note", style = MaterialTheme.typography.labelMedium)
+                }
             }
-            Spacer(modifier = Modifier.height(8.dp))
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = notes.orEmpty(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun AboutSection(
+    game: com.gamevault.app.domain.model.Game,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    // Plain text, no background container (Mihon parity)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onToggle() }
+            .animateContentSize(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("About", style = MaterialTheme.typography.titleSmall)
             Text(
-                text = game.description ?: "No description available.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = if (expanded) Int.MAX_VALUE else 3,
-                overflow = TextOverflow.Ellipsis,
+                text = if (expanded) "Show less" else "Show more",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
             )
         }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = game.description ?: "No description available.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else 3,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
