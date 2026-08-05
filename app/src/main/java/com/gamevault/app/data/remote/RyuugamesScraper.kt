@@ -82,11 +82,12 @@ class RyuugamesScraper {
                     title = title,
                     description = description,
                     developer = extractInfoValue(doc, "Developer"),
-                    engine = extractEngine(description),
+                    engine = extractEngine(listOfNotNull(title, description).joinToString("\n")),
                     version = extractVersion(description),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
+                    inLibrary = false,
                     sourceType = SourceType.RYUU_GAMES,
                     sourceUrl = url,
                     tags = extractTags(doc),
@@ -233,9 +234,8 @@ class RyuugamesScraper {
         }
     }
 
-    private fun extractEngine(description: String?): GameEngine? {
-        val text = description ?: return null
-        if (text.isEmpty()) return null
+    private fun extractEngine(text: String?): GameEngine? {
+        if (text.isNullOrEmpty()) return null
 
         // Same keyword matching as F95ZoneScraper.extractEngine.
         return when {

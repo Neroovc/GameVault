@@ -90,6 +90,7 @@ class ItchScraper {
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
+                    inLibrary = false,
                     sourceType = SourceType.ITCHIO,
                     sourceUrl = url,
                     tags = extractTags(doc),

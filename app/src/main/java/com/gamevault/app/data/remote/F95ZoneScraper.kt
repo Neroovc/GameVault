@@ -76,6 +76,7 @@ class F95ZoneScraper {
                     coverUrl = extractCoverUrl(doc),
                     f95Url = url,
                     f95Rating = extractRating(doc),
+                    inLibrary = false,
                     sourceType = SourceType.F95ZONE,
                     sourceUrl = url,
                     tags = extractTags(doc),
@@ -265,22 +266,34 @@ class F95ZoneScraper {
     }
 
     private fun extractEngine(doc: Document): GameEngine? {
-        val body = doc.selectFirst("article.message-body .bbWrapper")?.text() ?: return null
+        // F95Zone threads usually name the engine in the thread title
+        // ("GameName [v0.1] [Ren'Py]") and/or an info row ("Engine: Ren'Py"),
+        // so search those alongside the first post body.
+        val title = extractTitle(doc)
+        val body = doc.selectFirst("article.message-body .bbWrapper")?.text()
+        val infoRows = doc.select("dl.pairsJustified dt, dl.pairsJustified dd")
+            .mapNotNull { it.text().trim().takeIf { text -> text.isNotEmpty() } }
+            .joinToString(" ")
+
+        val text = listOfNotNull(title, body, infoRows.takeIf { it.isNotEmpty() })
+            .joinToString("\n")
+            .trim()
+        if (text.isEmpty()) return null
 
         return when {
-            body.contains("Ren'Py", ignoreCase = true) ||
-                body.contains("renpy", ignoreCase = true) -> GameEngine.RENPY
-            body.contains("RPG Maker", ignoreCase = true) ||
-                body.contains("RPGM", ignoreCase = true) -> GameEngine.RPGM
-            body.contains("Unity", ignoreCase = true) -> GameEngine.UNITY
-            body.contains("Unreal", ignoreCase = true) ||
-                body.contains("UE4", ignoreCase = true) ||
-                body.contains("UE5", ignoreCase = true) -> GameEngine.UNREAL
-            body.contains("HTML", ignoreCase = true) -> GameEngine.HTML
-            body.contains("Flash", ignoreCase = true) -> GameEngine.FLASH
-            body.contains("Java", ignoreCase = true) -> GameEngine.JAVA
-            body.contains("Twine", ignoreCase = true) ||
-                body.contains("SugarCube", ignoreCase = true) -> GameEngine.TWINE
+            text.contains("Ren'Py", ignoreCase = true) ||
+                text.contains("renpy", ignoreCase = true) -> GameEngine.RENPY
+            text.contains("RPG Maker", ignoreCase = true) ||
+                text.contains("RPGM", ignoreCase = true) -> GameEngine.RPGM
+            text.contains("Unity", ignoreCase = true) -> GameEngine.UNITY
+            text.contains("Unreal", ignoreCase = true) ||
+                text.contains("UE4", ignoreCase = true) ||
+                text.contains("UE5", ignoreCase = true) -> GameEngine.UNREAL
+            text.contains("HTML", ignoreCase = true) -> GameEngine.HTML
+            text.contains("Flash", ignoreCase = true) -> GameEngine.FLASH
+            text.contains("Java", ignoreCase = true) -> GameEngine.JAVA
+            text.contains("Twine", ignoreCase = true) ||
+                text.contains("SugarCube", ignoreCase = true) -> GameEngine.TWINE
             else -> GameEngine.OTHER
         }
     }

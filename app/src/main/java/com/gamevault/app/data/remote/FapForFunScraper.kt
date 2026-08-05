@@ -83,6 +83,7 @@ class FapForFunScraper {
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
+                    inLibrary = false,
                     sourceType = SourceType.FAP_FOR_FUN,
                     sourceUrl = url,
                     tags = extractTags(doc),

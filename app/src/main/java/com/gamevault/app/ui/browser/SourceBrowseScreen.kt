@@ -299,7 +299,25 @@ fun SourceBrowseScreen(
                                         detailLoadingUrl = result.url
                                         scope.launch {
                                             val detail = withContext(Dispatchers.IO) {
-                                                source.fetchDetail(result.url)
+                                                when (val res = source.fetchDetail(result.url)) {
+                                                    is SourceResult.Success -> {
+                                                        // Scraped games arrive with inLibrary=false; if this
+                                                        // exact URL is already in the library, reflect the real
+                                                        // state so the preview shows "In library" instead of a
+                                                        // re-add. Same URL precedence as the add flow below.
+                                                        val lookupUrl = res.data.f95Url ?: res.data.sourceUrl
+                                                        val existing = lookupUrl
+                                                            ?.let { gameRepository.getGameBySourceUrl(it) }
+                                                        if (existing != null && existing.inLibrary) {
+                                                            SourceResult.Success(
+                                                                res.data.copy(inLibrary = true),
+                                                            )
+                                                        } else {
+                                                            res
+                                                        }
+                                                    }
+                                                    is SourceResult.Error -> res
+                                                }
                                             }
                                             detailLoadingUrl = null
                                             when (detail) {
@@ -361,7 +379,7 @@ fun SourceBrowseScreen(
                         }
                         // saveGame returns the new row id, then the game lands in
                         // the chosen collections (default collection pre-checked).
-                        val savedId = gameRepository.saveGame(game)
+                        val savedId = gameRepository.saveGame(game.copy(inLibrary = true))
                         collectionIds.forEach { id -> gameRepository.addGameToCollection(savedId, id) }
                         detailGame = detailGame?.copy(inLibrary = true)
                         libraryUrls = libraryUrls + listOfNotNull(game.f95Url, game.sourceUrl)
