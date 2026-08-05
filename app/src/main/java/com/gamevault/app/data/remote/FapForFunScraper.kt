@@ -7,6 +7,7 @@ import com.gamevault.app.domain.model.Tag
 import com.gamevault.app.domain.source.SearchResult
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
 import java.net.URI
 import java.net.URLEncoder
@@ -214,17 +215,15 @@ class FapForFunScraper {
     }
 
     private fun extractCoverUrl(doc: Document, pageUrl: String): String? {
-        val selectors = listOf(
+        val metaSelectors = listOf(
             // Prefer the full-size og:image / twitter:image over body images,
             // which WordPress serves as -300x200-style resized variants.
             "meta[property=\"og:image\"]",
             "meta[property=\"twitter:image\"]",
             "meta[name=\"twitter:image\"]",
-            // Last resort: first image in the post body (wp-image-* screenshots).
-            ".entry-content img",
         )
 
-        for (selector in selectors) {
+        for (selector in metaSelectors) {
             val el = doc.selectFirst(selector) ?: continue
             val src = el.attr("content").ifBlank { el.attr("src") }
             if (src.isNotBlank() && !src.startsWith("data:image")) {
@@ -232,7 +231,38 @@ class FapForFunScraper {
             }
         }
 
+        // FAP posts open with screenshots hosted externally (imagetwist)
+        // BEFORE the real cover, so the first body <img> picks the wrong
+        // image. Prefer the first `.entry-content img` served from the site's
+        // own domain, where the cover lives (fapforfun.net/wp-content/...).
+        val contentImages = doc.select(".entry-content img")
+        val ownDomainSrc = contentImages.firstNotNullOfOrNull { img ->
+            resolveImageSrc(img).takeIf { it.contains("fapforfun.net") }
+        }
+        if (ownDomainSrc != null) {
+            return normalizeUrl(stripWordPressResize(ownDomainSrc), pageUrl)
+        }
+
+        // Last resort: first image in the post body (as before).
+        for (img in contentImages) {
+            val src = resolveImageSrc(img)
+            if (src.isNotBlank() && !src.startsWith("data:image")) {
+                return normalizeUrl(stripWordPressResize(src), pageUrl)
+            }
+        }
+
         return null
+    }
+
+    /** Resolves an <img> to its real source, honoring WordPress lazy-load
+     *  attributes (data-src / data-lazy-src) when src is a placeholder. */
+    private fun resolveImageSrc(img: Element): String {
+        val src = img.attr("src")
+        return if (src.isBlank() || src.startsWith("data:image")) {
+            img.attr("data-src").ifBlank { img.attr("data-lazy-src") }
+        } else {
+            src
+        }
     }
 
     /**

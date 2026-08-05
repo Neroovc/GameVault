@@ -277,12 +277,13 @@ class RyuugamesScraper {
 
     private fun extractCoverUrl(doc: Document, pageUrl: String): String? {
         val selectors = listOf(
-            // First image in the post body — prefer data-img-url, fall back to
-            // src (content images carry real srcs; the base64 placeholder only
-            // appears on list cards).
-            ".td-post-content img",
+            // og:image is the canonical cover; .td-post-content can inline
+            // logos/screenshots that should not win over it.
             "meta[property=\"og:image\"]",
             "meta[property=\"twitter:image\"]",
+            // Fall back to the first post-body image — prefer data-img-url,
+            // then content, then src (base64 placeholders are filtered below).
+            ".td-post-content img",
         )
 
         for (selector in selectors) {

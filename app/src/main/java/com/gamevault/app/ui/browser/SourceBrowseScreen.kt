@@ -90,6 +90,7 @@ fun SourceBrowseScreen(
     appSettings: AppSettings,
     onNavigateBack: () -> Unit,
     onAddGame: () -> Unit,
+    onNavigateToDetail: (Long) -> Unit,
 ) {
     val source = remember(sourceId) { sourceManager.getById(sourceId) }
     if (source == null) {
@@ -129,9 +130,16 @@ fun SourceBrowseScreen(
     LaunchedEffect(Unit) {
         allCollections = gameRepository.getAllCollections()
         appSettings.defaultCollectionId.first()?.let { defaultCollectionIds = listOf(it) }
-        libraryUrls = gameRepository.getAllGames()
-            .flatMap { listOfNotNull(it.f95Url, it.sourceUrl) }
-            .toSet()
+    }
+
+    // Reactive "In library" badge: recollects on every library change, so a
+    // remove from the full detail screen is reflected when navigating back.
+    LaunchedEffect(Unit) {
+        gameRepository.observeAllGames().collect { games ->
+            libraryUrls = games
+                .flatMap { listOfNotNull(it.f95Url, it.sourceUrl) }
+                .toSet()
+        }
     }
 
     // Screen-level cache of lazily fetched covers: url -> cover (null = fetched
@@ -298,32 +306,29 @@ fun SourceBrowseScreen(
                                     if (detailLoadingUrl == null) {
                                         detailLoadingUrl = result.url
                                         scope.launch {
+                                            // A result already in the library
+                                            // opens the FULL detail screen
+                                            // (rating, notes, remove) instead
+                                            // of re-scraping a reduced preview
+                                            // that cannot remove it — and
+                                            // skips the scrape entirely.
+                                            val existing = gameRepository
+                                                .getGameBySourceUrl(result.url)
+                                            if (existing != null && existing.inLibrary) {
+                                                detailLoadingUrl = null
+                                                onNavigateToDetail(existing.id)
+                                                return@launch
+                                            }
                                             val detail = withContext(Dispatchers.IO) {
-                                                when (val res = source.fetchDetail(result.url)) {
-                                                    is SourceResult.Success -> {
-                                                        // Scraped games arrive with inLibrary=false; if this
-                                                        // exact URL is already in the library, reflect the real
-                                                        // state so the preview shows "In library" instead of a
-                                                        // re-add. Same URL precedence as the add flow below.
-                                                        val lookupUrl = res.data.f95Url ?: res.data.sourceUrl
-                                                        val existing = lookupUrl
-                                                            ?.let { gameRepository.getGameBySourceUrl(it) }
-                                                        if (existing != null && existing.inLibrary) {
-                                                            SourceResult.Success(
-                                                                res.data.copy(inLibrary = true),
-                                                            )
-                                                        } else {
-                                                            res
-                                                        }
-                                                    }
-                                                    is SourceResult.Error -> res
-                                                }
+                                                source.fetchDetail(result.url)
                                             }
                                             detailLoadingUrl = null
                                             when (detail) {
-                                                is SourceResult.Success -> detailGame = detail.data
+                                                is SourceResult.Success ->
+                                                    detailGame = detail.data
                                                 is SourceResult.Error ->
-                                                    snackbarMessage = "Failed to load: ${detail.message}"
+                                                    snackbarMessage =
+                                                        "Failed to load: ${detail.message}"
                                             }
                                         }
                                     }

@@ -127,6 +127,9 @@ private fun GameVaultNavHost(
                 onAddGame = {
                     rootNavController.navigate(NavRoutes.ADD_GAME)
                 },
+                onNavigateToDetail = { gameId ->
+                    rootNavController.navigate(NavRoutes.gameDetail(gameId))
+                },
             )
         }
 
