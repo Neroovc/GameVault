@@ -32,8 +32,18 @@ class F95ZoneSource(
 
     override val description: String = "Adult games forum with the largest game catalogue"
 
+    /**
+     * Push the user's chosen request pace into the scraper. Called on every
+     * entry point so a settings change takes effect without a restart.
+     */
+    private suspend fun applyPace() {
+        val pace = appSettings.sourceRequestPace.first()
+        scraper.applyPace(pace.minPageIntervalMs, pace.maxConcurrent, pace.minBraveIntervalMs)
+    }
+
     override suspend fun search(query: String): SourceResult<List<SearchResult>> {
         return try {
+            applyPace()
             val cookie = appSettings.f95zoneCookie.first()
             val results = scraper.search(query, cookie)
             SourceResult.Success(results.map { sr ->
@@ -51,11 +61,23 @@ class F95ZoneSource(
         }
     }
 
-    override suspend fun fetchCover(url: String): String? =
-        scraper.fetchCover(url, appSettings.f95zoneCookie.firstOrNull())
+    override suspend fun fetchCover(url: String): String? {
+        return try {
+            applyPace()
+            val cookie = appSettings.f95zoneCookie.firstOrNull()
+            scraper.fetchCover(url, cookie)
+        } catch (e: ScrapeBlockedException) {
+            // Keep the block type visible to the caller (grid stops hammering)
+            // while other failures degrade to "no cover" silently.
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
 
     override suspend fun fetchDetail(url: String): SourceResult<Game> {
         return try {
+            applyPace()
             val cookie = appSettings.f95zoneCookie.first()
             when (val result = scraper.scrapeGame(url, cookie)) {
                 is ScrapeResult.Success -> {

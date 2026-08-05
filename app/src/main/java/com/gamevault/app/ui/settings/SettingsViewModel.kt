@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.data.settings.SourceRequestPace
 import com.gamevault.app.data.settings.ThemeMode
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.repository.GameRepository
@@ -42,6 +43,7 @@ data class SettingsUiState(
     val newCollectionName: String = "",
     val backupUi: BackupUiState = BackupUiState(),
     val defaultCollectionId: Long? = null,
+    val sourceRequestPace: SourceRequestPace = SourceRequestPace.GENTLE,
 )
 
 class SettingsViewModel(
@@ -81,6 +83,7 @@ class SettingsViewModel(
         _newCollectionName,
         _backupUi,
         appSettings.defaultCollectionId,
+        appSettings.sourceRequestPace,
     ) { array ->
         @Suppress("UNCHECKED_CAST")
         SettingsUiState(
@@ -94,6 +97,7 @@ class SettingsViewModel(
             newCollectionName = array[7] as String,
             backupUi = array[8] as BackupUiState,
             defaultCollectionId = array[9] as Long?,
+            sourceRequestPace = array[10] as SourceRequestPace,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -116,6 +120,12 @@ class SettingsViewModel(
     fun setGifAutoplay(enabled: Boolean) {
         viewModelScope.launch {
             appSettings.setGifAutoplay(enabled)
+        }
+    }
+
+    fun setSourceRequestPace(pace: SourceRequestPace) {
+        viewModelScope.launch {
+            appSettings.setSourceRequestPace(pace)
         }
     }
 

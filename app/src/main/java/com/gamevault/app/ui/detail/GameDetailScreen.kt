@@ -759,7 +759,7 @@ private fun GameDetailPreviewContent(
             item {
                 DetailActionRow(
                     game = game,
-                    isSaved = false,
+                    isSaved = game.inLibrary,
                     addingToLibrary = addingToLibrary,
                     onAddToLibrary = {
                         if (allCollections.isEmpty()) {

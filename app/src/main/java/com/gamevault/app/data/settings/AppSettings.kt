@@ -40,6 +40,22 @@ enum class StatusStyle(val displayName: String) {
     BADGE("Badge");
 }
 
+enum class SourceRequestPace(
+    val value: Int,
+    val displayName: String,
+    val minPageIntervalMs: Long,
+    val maxConcurrent: Int,
+    val minBraveIntervalMs: Long,
+) {
+    GENTLE(0, "Gentle", 1_600L, 1, 2_500L),
+    NORMAL(1, "Normal", 900L, 2, 1_500L);
+
+    companion object {
+        fun fromValue(value: Int): SourceRequestPace =
+            entries.firstOrNull { it.value == value } ?: GENTLE
+    }
+}
+
 /**
  * Persisted app settings backed by Jetpack DataStore.
  */
@@ -57,6 +73,7 @@ class AppSettings(private val context: Context) {
         val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
         val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
+        val SOURCE_REQUEST_PACE = intPreferencesKey("source_request_pace")
     }
 
     private val LEGACY_SHOW_ENGINE_SOURCE = booleanPreferencesKey("show_engine_source")
@@ -205,6 +222,18 @@ class AppSettings(private val context: Context) {
             } else {
                 prefs[Keys.F95ZONE_COOKIE] = cookie
             }
+        }
+    }
+
+    /** Observe the F95Zone request pace. Defaults to GENTLE (rate-limit safe). */
+    val sourceRequestPace: Flow<SourceRequestPace> = context.dataStore.data.map { prefs ->
+        SourceRequestPace.fromValue(prefs[Keys.SOURCE_REQUEST_PACE] ?: SourceRequestPace.GENTLE.value)
+    }
+
+    /** Persist the F95Zone request pace. */
+    suspend fun setSourceRequestPace(pace: SourceRequestPace) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.SOURCE_REQUEST_PACE] = pace.value
         }
     }
 }

@@ -29,16 +29,30 @@ class F95ZoneScraper {
         private const val TIMEOUT_MS = 30_000L
         private const val MAX_TAGS = 12
 
-        // Brave throttling: searches spaced >= 1.5s apart, shared across all
-        // instances so nothing ever bursts the search endpoint.
-        private const val BRAVE_MIN_INTERVAL_MS = 1_500L
+        // Brave throttling: searches spaced >= 2s apart, shared across all
+        // instances so nothing ever bursts the search endpoint. Tunable at
+        // runtime via [applyPace] so a user setting can override the defaults.
+        @Volatile var braveMinIntervalMs: Long = 2_000L
         private val lastBraveSearchTime = AtomicLong(0L)
 
-        // f95zone.to page-fetch taming: at most 4 concurrent fetches, spaced
-        // >= 400ms apart, so the grid's ~20-fetch cover burst stays gentle.
-        private const val PAGE_FETCH_MIN_INTERVAL_MS = 400L
-        private const val MAX_CONCURRENT_PAGE_FETCHES = 4
-        private val requestLimiter = Semaphore(MAX_CONCURRENT_PAGE_FETCHES)
+        // f95zone.to page-fetch taming: at most 2 concurrent fetches, spaced
+        // >= 1.2s apart, so the grid's ~20-fetch cover burst stays gentle.
+        @Volatile var pageFetchMinIntervalMs: Long = 1_200L
+        @Volatile var maxConcurrentPageFetches: Int = 2
+        @Volatile private var requestLimiter: Semaphore = Semaphore(maxConcurrentPageFetches)
+
+        /**
+         * Runtime-tunable pace controls so users can trade speed for gentleness
+         * when F95Zone rate-limits the app. Rebuilds the limiter with the new
+         * concurrency; a benign race is acceptable — the next fetch reads the
+         * fresh values and swaps in the new semaphore.
+         */
+        fun applyPace(minPageIntervalMs: Long, maxConcurrent: Int, minBraveIntervalMs: Long) {
+            pageFetchMinIntervalMs = minPageIntervalMs
+            maxConcurrentPageFetches = maxConcurrent
+            braveMinIntervalMs = minBraveIntervalMs
+            requestLimiter = Semaphore(maxConcurrent)
+        }
     }
 
     /**
@@ -155,6 +169,13 @@ class F95ZoneScraper {
         return try {
             val doc = fetchDocument(url, cookie)
             extractCoverUrl(doc)
+        } catch (e: HttpStatusException) {
+            // 403/429 mean the site is actively blocking us — surface that so
+            // the grid stops hammering instead of silently retrying covers.
+            if (e.statusCode == 403 || e.statusCode == 429) {
+                throw ScrapeBlockedException("Rate limited by F95Zone. Try again in a minute.")
+            }
+            null
         } catch (e: Exception) {
             null
         }
@@ -176,14 +197,14 @@ class F95ZoneScraper {
 
     /**
      * Fetches a Brave search page under the shared search throttle (at most one
-     * request per [BRAVE_MIN_INTERVAL_MS] across all instances). HTTP errors are
+     * request per [braveMinIntervalMs] across all instances). HTTP errors are
      * NOT ignored, so 429/403 surface as [HttpStatusException] instead of
      * parsing a block page as an empty result. Runs on the IO dispatcher, so
      * the sleep is acceptable.
      */
     private suspend fun fetchBraveSearch(url: String, cookie: String?): Connection.Response {
         val now = System.currentTimeMillis()
-        val waitMs = BRAVE_MIN_INTERVAL_MS - (now - lastBraveSearchTime.get())
+        val waitMs = braveMinIntervalMs - (now - lastBraveSearchTime.get())
         if (waitMs > 0) Thread.sleep(waitMs)
         lastBraveSearchTime.updateAndGet { prev -> maxOf(prev, now + waitMs.coerceAtLeast(0)) }
 
@@ -221,7 +242,7 @@ class F95ZoneScraper {
         // the site's 403. Runs on the IO dispatcher, so the sleep is fine.
         requestLimiter.acquire()
         try {
-            Thread.sleep(PAGE_FETCH_MIN_INTERVAL_MS)
+            Thread.sleep(pageFetchMinIntervalMs)
             return conn.get()
         } finally {
             requestLimiter.release()

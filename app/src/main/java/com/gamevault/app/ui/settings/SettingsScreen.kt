@@ -66,6 +66,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gamevault.app.BuildConfig
+import com.gamevault.app.data.settings.SourceRequestPace
 import com.gamevault.app.data.settings.ThemeMode
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -162,6 +163,14 @@ fun SettingsScreen(
                                 defaultCollectionId = state.defaultCollectionId,
                                 collections = state.collections,
                                 onSelected = viewModel::setDefaultCollectionId,
+                            )
+                        }
+
+                        // Sources
+                        item {
+                            SourcePaceSection(
+                                currentPace = state.sourceRequestPace,
+                                onPaceSelected = viewModel::setSourceRequestPace,
                             )
                         }
                     }
@@ -506,6 +515,54 @@ private fun DefaultLocationSection(
                 }
             }
             Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+}
+
+@Composable
+private fun SourcePaceSection(
+    currentPace: SourceRequestPace,
+    onPaceSelected: (SourceRequestPace) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Source request pace", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "Slower requests avoid F95Zone rate limits",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(modifier = Modifier.selectableGroup()) {
+                SourceRequestPace.entries.forEach { pace ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .selectable(
+                                selected = currentPace == pace,
+                                onClick = { onPaceSelected(pace) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentPace == pace,
+                            onClick = null,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = pace.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
         }
     }
 }
