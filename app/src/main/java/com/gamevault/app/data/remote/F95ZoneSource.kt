@@ -38,7 +38,7 @@ class F95ZoneSource(
      */
     private suspend fun applyPace() {
         val pace = appSettings.sourceRequestPace.first()
-        scraper.applyPace(pace.minPageIntervalMs, pace.maxConcurrent, pace.minBraveIntervalMs)
+        F95ZoneScraper.applyPace(pace.minPageIntervalMs, pace.maxConcurrent, pace.minBraveIntervalMs)
     }
 
     override suspend fun search(query: String): SourceResult<List<SearchResult>> {
