@@ -50,7 +50,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.toMutableStateMap
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,6 +79,30 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Semaphore
+
+/** Round-trips [SearchResult] lists through the saved-instance state bundle. */
+private val searchResultsSaver = listSaver<List<SearchResult>, String>(
+    save = { list -> list.flatMap { listOf(it.title, it.url, it.thumbnailUrl ?: "", it.developer ?: "", it.engine ?: "") } },
+    restore = { flat ->
+        flat.chunked(5).map { parts ->
+            SearchResult(
+                title = parts[0],
+                url = parts[1],
+                thumbnailUrl = parts[2].ifEmpty { null },
+                developer = parts[3].ifEmpty { null },
+                engine = parts[4].ifEmpty { null },
+            )
+        }
+    },
+)
+
+/** Round-trips the screen-level cover cache (url -> cover or null) as flat pairs. */
+private val coverCacheSaver = listSaver<MutableMap<String, String?>, String>(
+    save = { map -> map.entries.flatMap { listOf(it.key, it.value ?: "") } },
+    restore = { flat ->
+        flat.chunked(2).associate { it[0] to it[1].ifEmpty { null } }.toMutableStateMap()
+    },
+)
 
 /**
  * Browse a single game source: debounced search, result grid, detail fetch
@@ -107,18 +134,28 @@ fun SourceBrowseScreen(
         return
     }
 
-    var query by remember { mutableStateOf("") }
-    var submittedQuery by remember { mutableStateOf("") }
-    var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var submittedQuery by rememberSaveable { mutableStateOf("") }
+    // Search results must survive navigation to the full detail screen (and
+    // back), otherwise the throttled external search would restart from
+    // scratch on every return. SearchResult is a plain data class, so it gets
+    // a listSaver that round-trips its string fields.
+    var results by rememberSaveable(stateSaver = searchResultsSaver) {
+        mutableStateOf<List<SearchResult>>(emptyList())
+    }
+    // The query the currently loaded results belong to — distinguishes a
+    // restored search (skip re-run) from a NEW search on the same screen
+    // (must run), because submittedQuery alone cannot tell them apart.
+    var loadedQuery by rememberSaveable { mutableStateOf("") }
     var loading by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by rememberSaveable { mutableStateOf<String?>(null) }
     var detailGame by remember { mutableStateOf<Game?>(null) }
     var detailLoadingUrl by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
     // Once F95Zone rate-limits the cover burst, stop firing more cover fetches
     // for this screen session so we do not keep hammering the site.
-    var coverBlocked by remember { mutableStateOf(false) }
+    var coverBlocked by rememberSaveable { mutableStateOf(false) }
     var allCollections by remember { mutableStateOf(emptyList<Collection>()) }
     var defaultCollectionIds by remember { mutableStateOf(emptyList<Long>()) }
     // URLs already in the library (f95Url/sourceUrl union) — drives the
@@ -143,8 +180,12 @@ fun SourceBrowseScreen(
     }
 
     // Screen-level cache of lazily fetched covers: url -> cover (null = fetched
-    // and failed, so we never retry within this screen session).
-    val coverCache = remember { mutableStateMapOf<String, String?>() }
+    // and failed, so we never retry within this screen session). Saved across
+    // navigation so returning from the detail screen does not refire the whole
+    // cover burst (F95Zone rate-limits it).
+    val coverCache = rememberSaveable(saver = coverCacheSaver) {
+        mutableStateMapOf<String, String?>()
+    }
 
     // Cap concurrent cover fetches across the grid: a full grid fires ~20
     // fetchCover calls at once. Scraper-side throttles also apply; this just
@@ -161,14 +202,27 @@ fun SourceBrowseScreen(
             loading = false
             return@LaunchedEffect
         }
-        loading = true
+        // After returning from the full detail screen the saved query is
+        // restored — results are already loaded for it, so do not re-run the
+        // throttled external search. (A NEW search sets a different
+        // submittedQuery, so loadedQuery still points at the old one and the
+        // guard correctly lets the new search through.)
+        // A stale error from a previous query never applies to the currently
+        // loaded results, so clear it before the guard either way.
         error = null
+        if (results.isNotEmpty() && loadedQuery == submittedQuery) {
+            return@LaunchedEffect
+        }
+        loading = true
         coverBlocked = false
         // Scrapers block on Jsoup network I/O — run off the main thread,
         // mirroring AddGameViewModel's Dispatchers.IO pattern.
         val res = withContext(Dispatchers.IO) { source.search(submittedQuery.trim()) }
         when (res) {
-            is SourceResult.Success -> results = res.data
+            is SourceResult.Success -> {
+                results = res.data
+                loadedQuery = submittedQuery
+            }
             is SourceResult.Error -> error = res.message
         }
         loading = false
