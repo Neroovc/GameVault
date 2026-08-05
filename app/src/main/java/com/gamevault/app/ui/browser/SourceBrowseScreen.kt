@@ -100,7 +100,7 @@ private val searchResultsSaver = listSaver<List<SearchResult>, String>(
 private val coverCacheSaver = listSaver<MutableMap<String, String?>, String>(
     save = { map -> map.entries.flatMap { listOf(it.key, it.value ?: "") } },
     restore = { flat ->
-        flat.chunked(2).associate { it[0] to it[1].ifEmpty { null } }.toMutableStateMap()
+        flat.chunked(2).map { it[0] to it[1].ifEmpty { null } }.toMutableStateMap()
     },
 )
 
