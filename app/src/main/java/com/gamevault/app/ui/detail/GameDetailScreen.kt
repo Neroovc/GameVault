@@ -217,7 +217,7 @@ fun GameDetailScreen(
                         onRemoveFromLibrary = { viewModel.removeFromLibrary() },
                         onPickCollection = viewModel::showCollectionPicker,
                         onAdjustTime = { showTimeMenu = true },
-                        totalPlayTime = uiState.totalPlayTime,
+                        playTimeMinutes = uiState.game?.playTimeMinutes ?: 0L,
                     )
                 }
 
@@ -335,7 +335,7 @@ fun GameDetailScreen(
     // upcoming options). Shows the game's current total so the label is useful.
     if (showTimeMenu) {
         PlayTimeMenuDialog(
-            currentPlayTime = uiState.totalPlayTime,
+            currentPlayTime = uiState.game?.playTimeMinutes ?: 0L,
             onAdjustTime = {
                 showTimeMenu = false
                 showTimeDialog = true
@@ -923,7 +923,7 @@ private fun DetailActionRow(
     onRemoveFromLibrary: (() -> Unit)? = null,
     onPickCollection: (() -> Unit)? = null,
     onAdjustTime: (() -> Unit)?,
-    totalPlayTime: Long = 0,
+    playTimeMinutes: Long = 0,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -945,7 +945,7 @@ private fun DetailActionRow(
         )
         ActionButton(
             icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
-            label = if (totalPlayTime > 0) formatPlayTime(totalPlayTime) else "Play time",
+            label = if (playTimeMinutes > 0) formatPlayTime(playTimeMinutes) else "Play time",
             enabled = onAdjustTime != null,
             onClick = { onAdjustTime?.invoke() },
         )
