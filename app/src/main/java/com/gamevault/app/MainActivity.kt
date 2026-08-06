@@ -36,6 +36,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.gamevault.app.data.settings.ColorPalette
 import com.gamevault.app.data.settings.ThemeMode
 import com.gamevault.app.ui.addgame.AddGameScreen
 import com.gamevault.app.ui.addgame.AddGameViewModel
@@ -76,8 +77,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by appContainer.appSettings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
             val amoledDark by appContainer.appSettings.amoledDark.collectAsState(initial = false)
+            val colorPalette by appContainer.appSettings.colorPalette.collectAsState(initial = ColorPalette.VIOLET)
             GameVaultTheme(
                 themeMode = themeMode,
+                palette = colorPalette,
                 amoledDark = amoledDark,
             ) {
                 Surface(modifier = Modifier.fillMaxSize()) {
@@ -107,6 +110,7 @@ private fun GameVaultNavHost(
                     rootNavController.navigate(NavRoutes.gameDetail(gameId))
                 },
                 onSettingsClick = { rootNavController.navigate(NavRoutes.SETTINGS) },
+                onCollectionsClick = { rootNavController.navigate(NavRoutes.settings("collections")) },
                 onSourceClick = { sourceId ->
                     rootNavController.navigate(NavRoutes.sourceBrowse(sourceId))
                 },
@@ -133,7 +137,17 @@ private fun GameVaultNavHost(
             )
         }
 
-        composable(NavRoutes.SETTINGS) {
+        composable(
+            NavRoutes.SETTINGS_SECTION,
+            arguments = listOf(
+                navArgument("section") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
+        ) { backStackEntry ->
+            val section = backStackEntry.arguments?.getString("section")
             val viewModel: SettingsViewModel = viewModel(
                 factory = SettingsViewModel.Factory(
                     appSettings = appContainer.appSettings,
@@ -143,6 +157,7 @@ private fun GameVaultNavHost(
             )
             SettingsScreen(
                 viewModel = viewModel,
+                initialSection = section,
                 onNavigateBack = { rootNavController.popBackStack() },
             )
         }
@@ -203,6 +218,7 @@ private fun MainTabsScreen(
     appContainer: AppContainer,
     onGameClick: (Long) -> Unit,
     onSettingsClick: () -> Unit,
+    onCollectionsClick: () -> Unit,
     onSourceClick: (String) -> Unit,
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -283,6 +299,7 @@ private fun MainTabsScreen(
 
                 3 -> {
                     MoreScreen(
+                        onCollectionsClick = onCollectionsClick,
                         onSettingsClick = onSettingsClick,
                     )
                 }

@@ -10,6 +10,10 @@ object NavRoutes {
     const val COLLECTIONS = "collections"
     const val COLLECTION_GAMES = "collection/{collectionId}"
     const val SETTINGS = "settings"
+    const val SETTINGS_SECTION = "settings?section={section}"
+
+    fun settings(section: String? = null) =
+        if (section == null) SETTINGS else "settings?section=$section"
     const val HISTORY = "history"
     const val SEARCH = "search"
     const val SOURCE_BROWSE = "extensions/{sourceId}"

@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,8 +47,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,9 +55,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,20 +64,36 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gamevault.app.BuildConfig
+import com.gamevault.app.data.settings.ColorPalette
 import com.gamevault.app.data.settings.SourceRequestPace
 import com.gamevault.app.data.settings.ThemeMode
+import com.gamevault.app.ui.theme.lightSchemeFor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    initialSection: String? = null,
     onNavigateBack: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabTitles = listOf("Appearance", "Library", "Collections", "Backup")
+    val listState = rememberLazyListState()
+
+    // Scroll to the section CONTENT (not the header) so the section header
+    // stays visible right above. Indices match the LazyColumn item order:
+    // appearance=2, library=6, collections=9, backup=11.
+    LaunchedEffect(initialSection) {
+        val index = when (initialSection) {
+            "appearance" -> 2
+            "library" -> 6
+            "collections" -> 9
+            "backup" -> 11
+            else -> return@LaunchedEffect
+        }
+        listState.scrollToItem(index)
+    }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -113,114 +127,102 @@ fun SettingsScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { innerPadding ->
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
+                .padding(innerPadding)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            state = listState,
         ) {
-            TabRow(selectedTabIndex = selectedTab) {
-                tabTitles.forEachIndexed { index, title ->
-                    Tab(
-                        selected = selectedTab == index,
-                        onClick = { selectedTab = index },
-                        text = { Text(title) },
-                    )
-                }
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // Appearance
+            item { SectionHeader("Appearance") }
+            item {
+                ThemeSection(
+                    currentTheme = state.themeMode,
+                    currentPalette = state.colorPalette,
+                    amoledDark = state.amoledDark,
+                    gifAutoplay = state.gifAutoplay,
+                    onThemeSelected = viewModel::setThemeMode,
+                    onPaletteSelected = viewModel::setColorPalette,
+                    onAmoledToggle = viewModel::setAmoledDark,
+                    onGifAutoplayToggle = viewModel::setGifAutoplay,
+                )
+            }
+            item { HorizontalDivider() }
+            item { AboutSection() }
+
+            // Library
+            item { SectionHeader("Library") }
+            item {
+                DefaultLocationSection(
+                    defaultCollectionId = state.defaultCollectionId,
+                    collections = state.collections,
+                    onSelected = viewModel::setDefaultCollectionId,
+                )
+            }
+            item {
+                SourcePaceSection(
+                    currentPace = state.sourceRequestPace,
+                    onPaceSelected = viewModel::setSourceRequestPace,
+                )
             }
 
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                item { Spacer(modifier = Modifier.height(8.dp)) }
-
-                when (selectedTab) {
-                    0 -> {
-                        // Appearance
-                        item {
-                            ThemeSection(
-                                currentTheme = state.themeMode,
-                                amoledDark = state.amoledDark,
-                                gifAutoplay = state.gifAutoplay,
-                                onThemeSelected = viewModel::setThemeMode,
-                                onAmoledToggle = viewModel::setAmoledDark,
-                                onGifAutoplayToggle = viewModel::setGifAutoplay,
-                            )
-                        }
-
-                        // About
-                        item {
-                            AboutSection()
-                        }
-                    }
-
-                    1 -> {
-                        // Library
-                        item {
-                            DefaultLocationSection(
-                                defaultCollectionId = state.defaultCollectionId,
-                                collections = state.collections,
-                                onSelected = viewModel::setDefaultCollectionId,
-                            )
-                        }
-
-                        // Sources
-                        item {
-                            SourcePaceSection(
-                                currentPace = state.sourceRequestPace,
-                                onPaceSelected = viewModel::setSourceRequestPace,
-                            )
-                        }
-                    }
-
-                    2 -> {
-                        // Collections
-                        item {
-                            CollectionManagementSection(
-                                collections = state.collections,
-                                showCreateDialog = state.showCreateDialog,
-                                showRenameDialog = state.showRenameDialog,
-                                renameTarget = state.renameTarget,
-                                newCollectionName = state.newCollectionName,
-                                onCreateNew = viewModel::showCreateDialog,
-                                onShowRename = viewModel::showRenameDialog,
-                                onDelete = viewModel::deleteCollection,
-                                onDismissCreate = viewModel::dismissCreateDialog,
-                                onDismissRename = viewModel::dismissRenameDialog,
-                                onSetNewName = viewModel::setNewCollectionName,
-                                onCreateCollection = viewModel::createCollection,
-                                onRenameCollection = viewModel::renameCollection,
-                            )
-                        }
-                    }
-
-                    3 -> {
-                        // Backup
-                        item {
-                            BackupSection(
-                                isExporting = state.backupUi.isExporting,
-                                isImporting = state.backupUi.isImporting,
-                                onExport = { exportLauncher.launch("gamevault_backup.json") },
-                                onImport = { importLauncher.launch(arrayOf("application/json")) },
-                            )
-                        }
-                    }
-                }
-
-                item { Spacer(modifier = Modifier.height(32.dp)) }
+            // Collections
+            item { SectionHeader("Collections") }
+            item {
+                CollectionManagementSection(
+                    collections = state.collections,
+                    showCreateDialog = state.showCreateDialog,
+                    showRenameDialog = state.showRenameDialog,
+                    renameTarget = state.renameTarget,
+                    newCollectionName = state.newCollectionName,
+                    onCreateNew = viewModel::showCreateDialog,
+                    onShowRename = viewModel::showRenameDialog,
+                    onDelete = viewModel::deleteCollection,
+                    onDismissCreate = viewModel::dismissCreateDialog,
+                    onDismissRename = viewModel::dismissRenameDialog,
+                    onSetNewName = viewModel::setNewCollectionName,
+                    onCreateCollection = viewModel::createCollection,
+                    onRenameCollection = viewModel::renameCollection,
+                )
             }
+
+            // Backup
+            item { SectionHeader("Backup") }
+            item {
+                BackupSection(
+                    isExporting = state.backupUi.isExporting,
+                    isImporting = state.backupUi.isImporting,
+                    onExport = { exportLauncher.launch("gamevault_backup.json") },
+                    onImport = { importLauncher.launch(arrayOf("application/json")) },
+                )
+            }
+
+            item { Spacer(modifier = Modifier.height(32.dp)) }
         }
     }
 }
 
 @Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmall,
+        modifier = Modifier.padding(top = 8.dp),
+    )
+}
+
+@Composable
 private fun ThemeSection(
     currentTheme: ThemeMode,
+    currentPalette: ColorPalette,
     amoledDark: Boolean,
     gifAutoplay: Boolean,
     onThemeSelected: (ThemeMode) -> Unit,
+    onPaletteSelected: (ColorPalette) -> Unit,
     onAmoledToggle: (Boolean) -> Unit,
     onGifAutoplayToggle: (Boolean) -> Unit,
 ) {
@@ -258,6 +260,47 @@ private fun ThemeSection(
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = label,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Text("Palette", style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(4.dp))
+
+            Column(modifier = Modifier.selectableGroup()) {
+                ColorPalette.entries.forEach { palette ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .selectable(
+                                selected = currentPalette == palette,
+                                onClick = { onPaletteSelected(palette) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentPalette == palette,
+                            onClick = null,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(lightSchemeFor(palette).primary),
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = palette.displayName,
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }

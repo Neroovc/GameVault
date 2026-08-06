@@ -24,6 +24,19 @@ enum class ThemeMode(val value: Int) {
     }
 }
 
+enum class ColorPalette(val key: String, val displayName: String) {
+    VIOLET("violet", "Violet"),
+    SUNSET("sunset", "Sunset"),
+    OCEAN("ocean", "Ocean"),
+    FOREST("forest", "Forest"),
+    GOLD("gold", "Gold");
+
+    companion object {
+        fun fromValue(value: String): ColorPalette =
+            entries.firstOrNull { it.key == value } ?: VIOLET
+    }
+}
+
 enum class GridMode(val value: Int, val displayName: String) {
     COMPACT(0, "Compact"),
     COMFORTABLE(1, "Comfortable"),
@@ -63,6 +76,7 @@ class AppSettings(private val context: Context) {
 
     private object Keys {
         val THEME_MODE = intPreferencesKey("theme_mode")
+        val COLOR_PALETTE = stringPreferencesKey("color_palette")
         val AMOLED_DARK = booleanPreferencesKey("amoled_dark")
         val GIF_AUTOPLAY = booleanPreferencesKey("gif_autoplay")
         val GRID_MODE = intPreferencesKey("grid_mode")
@@ -87,6 +101,18 @@ class AppSettings(private val context: Context) {
     suspend fun setThemeMode(mode: ThemeMode) {
         context.dataStore.edit { prefs ->
             prefs[Keys.THEME_MODE] = mode.value
+        }
+    }
+
+    /** Observe the selected color palette. Defaults to VIOLET. */
+    val colorPalette: Flow<ColorPalette> = context.dataStore.data.map { prefs ->
+        ColorPalette.fromValue(prefs[Keys.COLOR_PALETTE] ?: ColorPalette.VIOLET.key)
+    }
+
+    /** Persist the selected color palette. */
+    suspend fun setColorPalette(palette: ColorPalette) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.COLOR_PALETTE] = palette.key
         }
     }
 

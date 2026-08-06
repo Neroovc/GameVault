@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.data.settings.ColorPalette
 import com.gamevault.app.data.settings.SourceRequestPace
 import com.gamevault.app.data.settings.ThemeMode
 import com.gamevault.app.domain.model.Collection
@@ -34,6 +35,7 @@ data class BackupUiState(
 
 data class SettingsUiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val colorPalette: ColorPalette = ColorPalette.VIOLET,
     val amoledDark: Boolean = false,
     val gifAutoplay: Boolean = true,
     val collections: List<CollectionWithCount> = emptyList(),
@@ -74,6 +76,7 @@ class SettingsViewModel(
 
     val uiState: StateFlow<SettingsUiState> = combine(
         appSettings.themeMode,
+        appSettings.colorPalette,
         appSettings.amoledDark,
         appSettings.gifAutoplay,
         collectionsWithCount,
@@ -88,16 +91,17 @@ class SettingsViewModel(
         @Suppress("UNCHECKED_CAST")
         SettingsUiState(
             themeMode = array[0] as ThemeMode,
-            amoledDark = array[1] as Boolean,
-            gifAutoplay = array[2] as Boolean,
-            collections = array[3] as List<CollectionWithCount>,
-            showCreateDialog = array[4] as Boolean,
-            showRenameDialog = array[5] as Boolean,
-            renameTarget = array[6] as Collection?,
-            newCollectionName = array[7] as String,
-            backupUi = array[8] as BackupUiState,
-            defaultCollectionId = array[9] as Long?,
-            sourceRequestPace = array[10] as SourceRequestPace,
+            colorPalette = array[1] as ColorPalette,
+            amoledDark = array[2] as Boolean,
+            gifAutoplay = array[3] as Boolean,
+            collections = array[4] as List<CollectionWithCount>,
+            showCreateDialog = array[5] as Boolean,
+            showRenameDialog = array[6] as Boolean,
+            renameTarget = array[7] as Collection?,
+            newCollectionName = array[8] as String,
+            backupUi = array[9] as BackupUiState,
+            defaultCollectionId = array[10] as Long?,
+            sourceRequestPace = array[11] as SourceRequestPace,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -108,6 +112,12 @@ class SettingsViewModel(
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
             appSettings.setThemeMode(mode)
+        }
+    }
+
+    fun setColorPalette(palette: ColorPalette) {
+        viewModelScope.launch {
+            appSettings.setColorPalette(palette)
         }
     }
 
