@@ -48,7 +48,6 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -138,6 +137,7 @@ fun GameDetailScreen(
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var showTimeDialog by remember { mutableStateOf(false) }
+    var showTimeMenu by remember { mutableStateOf(false) }
     var coverViewerOpen by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -216,7 +216,8 @@ fun GameDetailScreen(
                         onAddToLibrary = { viewModel.addToLibrary() },
                         onRemoveFromLibrary = { viewModel.removeFromLibrary() },
                         onPickCollection = viewModel::showCollectionPicker,
-                        onAdjustTime = { showTimeDialog = true },
+                        onAdjustTime = { showTimeMenu = true },
+                        totalPlayTime = uiState.totalPlayTime,
                     )
                 }
 
@@ -259,19 +260,6 @@ fun GameDetailScreen(
                     StatusSelector(
                         current = game.status,
                         onSelected = viewModel::updateGameStatus,
-                    )
-                }
-
-                // Play session controls
-                item {
-                    PlaySessionControls(
-                        isPlaying = uiState.sessions.any { it.endTime == null },
-                        onStart = viewModel::startPlaySession,
-                        onStop = {
-                            val activeSession = uiState.sessions.find { it.endTime == null }
-                            activeSession?.let { viewModel.endPlaySession(it.id) }
-                        },
-                        totalPlayTime = uiState.totalPlayTime,
                     )
                 }
 
@@ -340,6 +328,22 @@ fun GameDetailScreen(
                     Text("Done")
                 }
             },
+        )
+    }
+
+    // Play time menu: entry point for the per-game time actions (adjust, and
+    // upcoming options). Shows the game's current total so the label is useful.
+    if (showTimeMenu) {
+        PlayTimeMenuDialog(
+            currentPlayTime = uiState.totalPlayTime,
+            onAdjustTime = {
+                showTimeMenu = false
+                showTimeDialog = true
+            },
+            onComingSoon = { message ->
+                scope.launch { snackbarHostState.showSnackbar(message) }
+            },
+            onDismiss = { showTimeMenu = false },
         )
     }
 
@@ -591,45 +595,57 @@ private fun StatusSelector(
 }
 
 @Composable
-private fun PlaySessionControls(
-    isPlaying: Boolean,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-    totalPlayTime: Long,
+private fun PlayTimeMenuDialog(
+    currentPlayTime: Long,
+    onAdjustTime: () -> Unit,
+    onComingSoon: (String) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Play time") },
+        text = {
             Column {
-                Text("Play Time", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = formatPlayTime(totalPlayTime),
-                    style = MaterialTheme.typography.headlineLarge,
+                    text = formatPlayTime(currentPlayTime),
+                    style = MaterialTheme.typography.headlineMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                FilledTonalButton(
+                    onClick = onAdjustTime,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Adjust play time")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                FilledTonalButton(
+                    onClick = { onComingSoon("Coming soon") },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Coming soon")
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                FilledTonalButton(
+                    onClick = { onComingSoon("Coming soon") },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Coming soon")
+                }
             }
-
-            Button(
-                onClick = if (isPlaying) onStop else onStart,
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(4.dp))
-                Text(if (isPlaying) "Stop" else "Start Playing")
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Close")
             }
-        }
-    }
+        },
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -907,6 +923,7 @@ private fun DetailActionRow(
     onRemoveFromLibrary: (() -> Unit)? = null,
     onPickCollection: (() -> Unit)? = null,
     onAdjustTime: (() -> Unit)?,
+    totalPlayTime: Long = 0,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -928,7 +945,7 @@ private fun DetailActionRow(
         )
         ActionButton(
             icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
-            label = "Play time",
+            label = if (totalPlayTime > 0) formatPlayTime(totalPlayTime) else "Play time",
             enabled = onAdjustTime != null,
             onClick = { onAdjustTime?.invoke() },
         )
