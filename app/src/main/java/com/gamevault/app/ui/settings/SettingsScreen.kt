@@ -6,7 +6,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +22,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CollectionsBookmark
@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,6 +40,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,7 +48,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -64,16 +65,14 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.gamevault.app.BuildConfig
-import com.gamevault.app.data.settings.ColorPalette
 import com.gamevault.app.data.settings.SourceRequestPace
-import com.gamevault.app.data.settings.ThemeMode
-import com.gamevault.app.ui.theme.lightSchemeFor
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     initialSection: String? = null,
+    onAppearanceClick: () -> Unit,
     onNavigateBack: () -> Unit,
 ) {
     val state by viewModel.uiState.collectAsState()
@@ -83,13 +82,13 @@ fun SettingsScreen(
 
     // Scroll to the section CONTENT (not the header) so the section header
     // stays visible right above. Indices match the LazyColumn item order:
-    // appearance=2, library=6, collections=9, backup=11.
+    // appearance=1, library=4, collections=7, backup=9.
     LaunchedEffect(initialSection) {
         val index = when (initialSection) {
-            "appearance" -> 2
-            "library" -> 6
-            "collections" -> 9
-            "backup" -> 11
+            "appearance" -> 1
+            "library" -> 4
+            "collections" -> 7
+            "backup" -> 9
             else -> return@LaunchedEffect
         }
         listState.scrollToItem(index)
@@ -137,21 +136,17 @@ fun SettingsScreen(
         ) {
             item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            // Appearance
-            item { SectionHeader("Appearance") }
+            // Appearance (navigates to the dedicated Appearance screen)
             item {
-                ThemeSection(
-                    currentTheme = state.themeMode,
-                    currentPalette = state.colorPalette,
-                    amoledDark = state.amoledDark,
-                    gifAutoplay = state.gifAutoplay,
-                    onThemeSelected = viewModel::setThemeMode,
-                    onPaletteSelected = viewModel::setColorPalette,
-                    onAmoledToggle = viewModel::setAmoledDark,
-                    onGifAutoplayToggle = viewModel::setGifAutoplay,
+                SectionHeader("Appearance")
+                ListItem(
+                    headline = { Text("Appearance") },
+                    supporting = { Text("Theme, palette and AMOLED") },
+                    leading = { Icon(Icons.Default.Palette, contentDescription = null) },
+                    trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    modifier = Modifier.clickable { onAppearanceClick() },
                 )
             }
-            item { HorizontalDivider() }
             item { AboutSection() }
 
             // Library
@@ -213,151 +208,6 @@ private fun SectionHeader(title: String) {
         style = MaterialTheme.typography.titleSmall,
         modifier = Modifier.padding(top = 8.dp),
     )
-}
-
-@Composable
-private fun ThemeSection(
-    currentTheme: ThemeMode,
-    currentPalette: ColorPalette,
-    amoledDark: Boolean,
-    gifAutoplay: Boolean,
-    onThemeSelected: (ThemeMode) -> Unit,
-    onPaletteSelected: (ColorPalette) -> Unit,
-    onAmoledToggle: (Boolean) -> Unit,
-    onGifAutoplayToggle: (Boolean) -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Theme", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Column(modifier = Modifier.selectableGroup()) {
-                ThemeMode.entries.forEach { mode ->
-                    val label = when (mode) {
-                        ThemeMode.SYSTEM -> "System default"
-                        ThemeMode.LIGHT -> "Light"
-                        ThemeMode.DARK -> "Dark"
-                    }
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .selectable(
-                                selected = currentTheme == mode,
-                                onClick = { onThemeSelected(mode) },
-                                role = Role.RadioButton,
-                            )
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = currentTheme == mode,
-                            onClick = null,
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = label,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text("Palette", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Column(modifier = Modifier.selectableGroup()) {
-                ColorPalette.entries.forEach { palette ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .selectable(
-                                selected = currentPalette == palette,
-                                onClick = { onPaletteSelected(palette) },
-                                role = Role.RadioButton,
-                            )
-                            .padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        RadioButton(
-                            selected = currentPalette == palette,
-                            onClick = null,
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(lightSchemeFor(palette).primary),
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = palette.displayName,
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "AMOLED Dark (pure black)",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.weight(1f),
-                )
-                Switch(
-                    checked = amoledDark,
-                    onCheckedChange = onAmoledToggle,
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-            HorizontalDivider()
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(44.dp)
-                    .padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "GIF Autoplay",
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = "Automatically play animated cover images",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                    )
-                }
-                Switch(
-                    checked = gifAutoplay,
-                    onCheckedChange = onGifAutoplayToggle,
-                )
-            }
-        }
-    }
 }
 
 @Composable

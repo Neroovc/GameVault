@@ -50,6 +50,7 @@ import com.gamevault.app.ui.library.LibraryScreen
 import com.gamevault.app.ui.library.LibraryViewModel
 import com.gamevault.app.ui.more.MoreScreen
 import com.gamevault.app.ui.navigation.NavRoutes
+import com.gamevault.app.ui.settings.AppearanceScreen
 import com.gamevault.app.ui.settings.SettingsScreen
 import com.gamevault.app.ui.settings.SettingsViewModel
 import com.gamevault.app.ui.theme.GameVaultTheme
@@ -149,6 +150,7 @@ private fun GameVaultNavHost(
         ) { backStackEntry ->
             val section = backStackEntry.arguments?.getString("section")
             val viewModel: SettingsViewModel = viewModel(
+                key = "shared_settings_vm",
                 factory = SettingsViewModel.Factory(
                     appSettings = appContainer.appSettings,
                     repository = appContainer.gameRepository,
@@ -158,6 +160,22 @@ private fun GameVaultNavHost(
             SettingsScreen(
                 viewModel = viewModel,
                 initialSection = section,
+                onAppearanceClick = { rootNavController.navigate(NavRoutes.SETTINGS_APPEARANCE) },
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(NavRoutes.SETTINGS_APPEARANCE) {
+            val viewModel: SettingsViewModel = viewModel(
+                key = "shared_settings_vm",
+                factory = SettingsViewModel.Factory(
+                    appSettings = appContainer.appSettings,
+                    repository = appContainer.gameRepository,
+                    backup = appContainer.gameVaultBackup,
+                )
+            )
+            AppearanceScreen(
+                viewModel = viewModel,
                 onNavigateBack = { rootNavController.popBackStack() },
             )
         }

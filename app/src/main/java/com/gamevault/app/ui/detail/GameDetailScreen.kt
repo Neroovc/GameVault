@@ -13,8 +13,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -33,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Circle
@@ -72,6 +71,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
@@ -143,16 +143,28 @@ fun GameDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.game?.title ?: "Game") },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                            CircleShape,
+                        ),
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
                     var menuExpanded by remember { mutableStateOf(false) }
                     Box {
-                        IconButton(onClick = { menuExpanded = true }) {
+                        IconButton(
+                            onClick = { menuExpanded = true },
+                            modifier = Modifier.background(
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                                CircleShape,
+                            ),
+                        ) {
                             Icon(Icons.Default.MoreVert, contentDescription = "More options")
                         }
                         DropdownMenu(
@@ -194,7 +206,7 @@ fun GameDetailScreen(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
+                    .padding(bottom = innerPadding.calculateBottomPadding())
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
@@ -204,6 +216,7 @@ fun GameDetailScreen(
                         game = game,
                         onRatingChange = viewModel::updatePersonalRating,
                         onCoverClick = { coverViewerOpen = true },
+                        onStatusChange = viewModel::updateGameStatus,
                     )
                 }
 
@@ -253,14 +266,6 @@ fun GameDetailScreen(
                     item {
                         GenresRow(tags = game.tags)
                     }
-                }
-
-                // Status selector
-                item {
-                    StatusSelector(
-                        current = game.status,
-                        onSelected = viewModel::updateGameStatus,
-                    )
                 }
 
                 // Routes section
@@ -417,7 +422,9 @@ private fun GameHeader(
     onRatingChange: ((Float) -> Unit)? = null,
     sourceName: String? = null,
     onCoverClick: (() -> Unit)? = null,
+    onStatusChange: ((GameStatus) -> Unit)? = null,
 ) {
+    var statusMenuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -478,17 +485,73 @@ private fun GameHeader(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                Icon(
-                    imageVector = statusMetaIcon(game.status),
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = game.status.displayName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (onStatusChange != null) {
+                    Box {
+                        FilledTonalButton(
+                            onClick = { statusMenuExpanded = true },
+                            modifier = Modifier.height(32.dp),
+                        ) {
+                            Icon(
+                                imageVector = statusMetaIcon(game.status),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = game.status.displayName,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = statusMenuExpanded,
+                            onDismissRequest = { statusMenuExpanded = false },
+                        ) {
+                            GameStatus.entries.forEach { status ->
+                                DropdownMenuItem(
+                                    text = { Text(status.displayName) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = statusMetaIcon(status),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(18.dp),
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        if (status == game.status) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp),
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        statusMenuExpanded = false
+                                        onStatusChange(status)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    Icon(
+                        imageVector = statusMetaIcon(game.status),
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = game.status.displayName,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (sourceLabel != null) {
                     Text(
                         text = "·",
@@ -561,39 +624,6 @@ private fun RatingBar(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun StatusSelector(
-    current: GameStatus,
-    onSelected: (GameStatus) -> Unit,
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Status", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                GameStatus.entries.forEach { status ->
-                    FilledTonalButton(
-                        onClick = { onSelected(status) },
-                        modifier = Modifier.height(32.dp),
-                    ) {
-                        Text(
-                            status.displayName,
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
 @Composable
 private fun PlayTimeMenuDialog(
     currentPlayTime: Long,
@@ -648,7 +678,6 @@ private fun PlayTimeMenuDialog(
     )
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RoutesSectionHeader(
     onAddRoute: (String) -> Unit,
@@ -745,9 +774,15 @@ private fun GameDetailPreviewContent(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(game.title) },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                            CircleShape,
+                        ),
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -758,7 +793,7 @@ private fun GameDetailPreviewContent(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(bottom = innerPadding.calculateBottomPadding())
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
