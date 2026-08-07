@@ -143,6 +143,7 @@ fun GameDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                title = {},
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
                     IconButton(
@@ -774,6 +775,7 @@ private fun GameDetailPreviewContent(
     Scaffold(
         topBar = {
             TopAppBar(
+                title = {},
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                 navigationIcon = {
                     IconButton(

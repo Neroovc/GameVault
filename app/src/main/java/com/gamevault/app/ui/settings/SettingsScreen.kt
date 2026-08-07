@@ -140,10 +140,10 @@ fun SettingsScreen(
             item {
                 SectionHeader("Appearance")
                 ListItem(
-                    headline = { Text("Appearance") },
-                    supporting = { Text("Theme, palette and AMOLED") },
-                    leading = { Icon(Icons.Default.Palette, contentDescription = null) },
-                    trailing = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
+                    headlineContent = { Text("Appearance") },
+                    supportingContent = { Text("Theme, palette and AMOLED") },
+                    leadingContent = { Icon(Icons.Default.Palette, contentDescription = null) },
+                    trailingContent = { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null) },
                     modifier = Modifier.clickable { onAppearanceClick() },
                 )
             }
