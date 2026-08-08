@@ -282,6 +282,46 @@ class LibraryViewModel(
         initialValue = emptyList(),
     )
 
+    /**
+     * Per-tab display items, computed ahead of time for EVERY strip tab from
+     * the in-memory library. Each pager page reads its own entry (keyed by the
+     * tab's filter key), so the incoming page shows its own category instantly
+     * while the pager animates — no more stale "previous category" flash.
+     */
+    val pageData: StateFlow<Map<String, LibraryDisplayItems>> = combine(
+        allGames,
+        collections,
+        _sortOrder,
+        _groupBy,
+    ) { all, colls, sort, group ->
+        val tabs = computeStripTabs(group, all, colls)
+        val byKey = HashMap<String, LibraryDisplayItems>()
+        for (tab in tabs) {
+            val tabGames = when (tab) {
+                is StripTab.AllTab -> all
+                is StripTab.CollectionTab -> all.filter { game ->
+                    game.collections.any { it.id == tab.collection.id }
+                }
+                is StripTab.StatusTab -> all.filter { it.status == tab.status }
+                is StripTab.SourceTab -> all.filter { it.sourceType == tab.source }
+            }
+            val sorted = sortGames(tabGames, sort)
+            byKey[tab.key ?: ""] = LibraryDisplayItems(
+                withHeaders = if (group != GroupBy.NONE) {
+                    computeDisplayItems(sorted, group, showHeaders = true)
+                } else {
+                    emptyList()
+                },
+                flat = computeDisplayItems(sorted, group, showHeaders = false),
+            )
+        }
+        byKey
+    }.flowOn(Dispatchers.Default).stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = emptyMap(),
+    )
+
     val uiState: StateFlow<LibraryUiState> = combine(
         queryState,
         _gridMode,

@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 
 import androidx.compose.foundation.pager.HorizontalPager
@@ -69,6 +70,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -126,6 +128,10 @@ fun LibraryScreen(
 
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { uiState.stripTabs.size })
+    val pageData by viewModel.pageData.collectAsState()
+    // One scroll position per strip tab, so each category remembers where the
+    // user left off instead of sharing a single grid state across pages.
+    val scrollStates = remember { mutableStateMapOf<String, LazyGridState>() }
 
     val hasActiveFilters = uiState.selectedStatus != GameStatusFilter.ALL ||
         uiState.selectedCollectionId != null ||
@@ -235,6 +241,11 @@ fun LibraryScreen(
                     pagerState = pagerState,
                     selectedTabIndex = pagerState.settledPage.coerceIn(0, stripTabs.lastIndex),
                     onTabSelected = { index ->
+                        // Push the filter at TAP time (not after the animation
+                        // settles) so the new page's data is already flowing in
+                        // while the pager animates. The settledPage effect below
+                        // stays as a sync backup for manual swipes.
+                        viewModel.onPagerTabSelected(stripTabs, index)
                         scope.launch { pagerState.animateScrollToPage(index) }
                     },
                 )
@@ -264,9 +275,11 @@ fun LibraryScreen(
 
                 // External filter changes must scroll the pager to the matching
                 // page. Only scroll when the pager drifted from its target, so
-                // the two-way sync never loops back on itself.
+                // the two-way sync never loops back on itself. A user-initiated
+                // tab animation is in flight during tap-driven switches — never
+                // yank the pager mid-animation, let it land on its own.
                 LaunchedEffect(targetPage, uiState.groupBy, stripTabs.size) {
-                    if (stripTabs.isNotEmpty()) {
+                    if (stripTabs.isNotEmpty() && !pagerState.isScrollInProgress) {
                         val clamped = targetPage.coerceIn(0, stripTabs.lastIndex)
                         if (pagerState.currentPage != clamped) {
                             pagerAxisResetting = true
@@ -293,14 +306,28 @@ fun LibraryScreen(
                     modifier = Modifier.fillMaxSize(),
                     beyondViewportPageCount = 1,
                 ) { page ->
+                    // Each page renders its OWN tab's cached data, so the
+                    // incoming page never flashes the previous category's items
+                    // during the switch animation. Fallbacks: while searching,
+                    // pages keep showing the search results (pre-pager behavior);
+                    // on cache misses the currently-settled page can fall back
+                    // to the live uiState (it IS that category's data).
+                    val tabKey = uiState.stripTabs.getOrNull(page)?.key ?: ""
+                    val cached = pageData[tabKey]
                     val displayItems = when {
-                        uiState.groupBy != GroupBy.NONE && page == 0 -> uiState.displayItems.withHeaders
-                        else -> uiState.displayItems.flat
+                        cached != null ->
+                            if (page == 0 && uiState.groupBy != GroupBy.NONE) cached.withHeaders
+                            else cached.flat
+                        uiState.searchQuery.isNotBlank() || page == pagerState.settledPage ->
+                            if (page == 0 && uiState.groupBy != GroupBy.NONE) uiState.displayItems.withHeaders
+                            else uiState.displayItems.flat
+                        else -> emptyList<DisplayItem>()
                     }
                     LibraryGridPage(
                         uiState = uiState,
                         displayItems = displayItems,
                         groupBy = uiState.groupBy,
+                        listState = scrollStates.getOrPut(tabKey) { LazyGridState() },
                         selectedIds = selectedIds,
                         isSelectionMode = isSelectionMode,
                         selectionViewModel = selectionViewModel,
@@ -523,6 +550,7 @@ private fun LibraryGridPage(
     uiState: LibraryUiState,
     displayItems: List<DisplayItem>,
     groupBy: GroupBy,
+    listState: LazyGridState,
     selectedIds: Set<Long>,
     isSelectionMode: Boolean,
     selectionViewModel: LibrarySelectionViewModel,
@@ -538,6 +566,7 @@ private fun LibraryGridPage(
         contentPadding = PaddingValues(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
+        state = listState,
         modifier = Modifier.fillMaxSize(),
     ) {
         displayItems.forEach { item ->
