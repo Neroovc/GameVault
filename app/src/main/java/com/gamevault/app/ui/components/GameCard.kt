@@ -227,7 +227,7 @@ private fun GridContent(
                     text = game.title,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(start = 8.dp, end = 56.dp, vertical = 6.dp),
+                        .padding(start = 8.dp, end = 56.dp, top = 6.dp, bottom = 6.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
