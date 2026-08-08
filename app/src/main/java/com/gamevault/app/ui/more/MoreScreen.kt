@@ -5,7 +5,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CollectionsBookmark
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Leaderboard
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -15,6 +20,38 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+
+/**
+ * Entries of the "More" hub. Navigation to the matching route lives in the
+ * nav host so the screen itself stays navigation-agnostic.
+ */
+enum class MoreEntry {
+    COLLECTIONS,
+    APPEARANCE,
+    STATISTICS,
+    SECURITY,
+    ADVANCED,
+    SETTINGS,
+    ABOUT,
+}
+
+private data class MoreItem(
+    val entry: MoreEntry,
+    val label: String,
+    val supporting: String,
+    val icon: ImageVector,
+)
+
+private val moreItems = listOf(
+    MoreItem(MoreEntry.COLLECTIONS, "Colecciones", "Manage your game collections", Icons.Default.CollectionsBookmark),
+    MoreItem(MoreEntry.APPEARANCE, "Apariencia", "Theme, palettes and AMOLED", Icons.Default.Palette),
+    MoreItem(MoreEntry.STATISTICS, "Estadísticas", "Play time, progress and totals", Icons.Default.Leaderboard),
+    MoreItem(MoreEntry.SECURITY, "Seguridad y privacidad", "Cookie, incognito and privacy", Icons.Default.Lock),
+    MoreItem(MoreEntry.ADVANCED, "Avanzado", "Library badges and special options", Icons.Default.Build),
+    MoreItem(MoreEntry.SETTINGS, "Settings", "Library settings, collections and backup", Icons.Default.Settings),
+    MoreItem(MoreEntry.ABOUT, "Acerca de", "Version and legal", Icons.Default.Info),
+)
 
 /**
  * "More" tab — hub screen with entries for secondary app sections.
@@ -22,8 +59,7 @@ import androidx.compose.ui.Modifier
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoreScreen(
-    onCollectionsClick: () -> Unit,
-    onSettingsClick: () -> Unit,
+    onItemClick: (MoreEntry) -> Unit,
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("More") }) },
@@ -33,24 +69,15 @@ fun MoreScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
         ) {
-            item {
+            items(moreItems.size) { index ->
+                val item = moreItems[index]
                 ListItem(
-                    headlineContent = { Text("Colecciones") },
-                    supportingContent = { Text("Manage your game collections") },
+                    headlineContent = { Text(item.label) },
+                    supportingContent = { Text(item.supporting) },
                     leadingContent = {
-                        Icon(Icons.Default.CollectionsBookmark, contentDescription = null)
+                        Icon(item.icon, contentDescription = null)
                     },
-                    modifier = Modifier.clickable { onCollectionsClick() },
-                )
-            }
-            item {
-                ListItem(
-                    headlineContent = { Text("Settings") },
-                    supportingContent = { Text("Appearance, library and backup") },
-                    leadingContent = {
-                        Icon(Icons.Default.Settings, contentDescription = null)
-                    },
-                    modifier = Modifier.clickable { onSettingsClick() },
+                    modifier = Modifier.clickable { onItemClick(item.entry) },
                 )
             }
         }

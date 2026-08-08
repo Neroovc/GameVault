@@ -3,6 +3,7 @@ package com.gamevault.app.ui.detail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -33,6 +35,7 @@ data class GameDetailUiState(
 class GameDetailViewModel(
     private val gameId: Long,
     private val repository: GameRepository,
+    private val appSettings: AppSettings,
 ) : ViewModel() {
 
     private val _showCollectionPicker = MutableStateFlow(false)
@@ -132,6 +135,8 @@ class GameDetailViewModel(
 
     fun startPlaySession() {
         viewModelScope.launch {
+            // Incognito mode: never record play history.
+            if (appSettings.incognitoMode.first()) return@launch
             repository.saveSession(
                 PlaySession(
                     gameId = gameId,
@@ -218,9 +223,10 @@ class GameDetailViewModel(
     class Factory(
         private val gameId: Long,
         private val repository: GameRepository,
+        private val appSettings: AppSettings,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            GameDetailViewModel(gameId, repository) as T
+            GameDetailViewModel(gameId, repository, appSettings) as T
     }
 }

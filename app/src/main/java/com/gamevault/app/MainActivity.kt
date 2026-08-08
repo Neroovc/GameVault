@@ -40,6 +40,8 @@ import com.gamevault.app.data.settings.ColorPalette
 import com.gamevault.app.data.settings.ThemeMode
 import com.gamevault.app.ui.addgame.AddGameScreen
 import com.gamevault.app.ui.addgame.AddGameViewModel
+import com.gamevault.app.ui.advanced.AdvancedScreen
+import com.gamevault.app.ui.advanced.AdvancedViewModel
 import com.gamevault.app.ui.browser.BrowserScreen
 import com.gamevault.app.ui.browser.SourceBrowseScreen
 import com.gamevault.app.ui.detail.GameDetailScreen
@@ -48,11 +50,17 @@ import com.gamevault.app.ui.history.HistoryScreen
 import com.gamevault.app.ui.history.HistoryViewModel
 import com.gamevault.app.ui.library.LibraryScreen
 import com.gamevault.app.ui.library.LibraryViewModel
+import com.gamevault.app.ui.more.AboutScreen
+import com.gamevault.app.ui.more.MoreEntry
 import com.gamevault.app.ui.more.MoreScreen
 import com.gamevault.app.ui.navigation.NavRoutes
+import com.gamevault.app.ui.security.SecurityScreen
+import com.gamevault.app.ui.security.SecurityViewModel
 import com.gamevault.app.ui.settings.AppearanceScreen
 import com.gamevault.app.ui.settings.SettingsScreen
 import com.gamevault.app.ui.settings.SettingsViewModel
+import com.gamevault.app.ui.statistics.StatisticsScreen
+import com.gamevault.app.ui.statistics.StatisticsViewModel
 import com.gamevault.app.ui.theme.GameVaultTheme
 
 private data class TabItem(
@@ -110,8 +118,17 @@ private fun GameVaultNavHost(
                 onGameClick = { gameId ->
                     rootNavController.navigate(NavRoutes.gameDetail(gameId))
                 },
-                onSettingsClick = { rootNavController.navigate(NavRoutes.SETTINGS) },
-                onCollectionsClick = { rootNavController.navigate(NavRoutes.settings("collections")) },
+                onMoreItemClick = { entry ->
+                    when (entry) {
+                        MoreEntry.COLLECTIONS -> rootNavController.navigate(NavRoutes.settings("collections"))
+                        MoreEntry.APPEARANCE -> rootNavController.navigate(NavRoutes.SETTINGS_APPEARANCE)
+                        MoreEntry.STATISTICS -> rootNavController.navigate(NavRoutes.STATISTICS)
+                        MoreEntry.SECURITY -> rootNavController.navigate(NavRoutes.SECURITY_INFO)
+                        MoreEntry.ADVANCED -> rootNavController.navigate(NavRoutes.ADVANCED)
+                        MoreEntry.SETTINGS -> rootNavController.navigate(NavRoutes.SETTINGS)
+                        MoreEntry.ABOUT -> rootNavController.navigate(NavRoutes.ABOUT)
+                    }
+                },
                 onSourceClick = { sourceId ->
                     rootNavController.navigate(NavRoutes.sourceBrowse(sourceId))
                 },
@@ -180,6 +197,42 @@ private fun GameVaultNavHost(
             )
         }
 
+        composable(NavRoutes.STATISTICS) {
+            val viewModel: StatisticsViewModel = viewModel(
+                factory = StatisticsViewModel.Factory(appContainer.gameRepository),
+            )
+            StatisticsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(NavRoutes.SECURITY_INFO) {
+            val viewModel: SecurityViewModel = viewModel(
+                factory = SecurityViewModel.Factory(appContainer.appSettings),
+            )
+            SecurityScreen(
+                viewModel = viewModel,
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(NavRoutes.ADVANCED) {
+            val viewModel: AdvancedViewModel = viewModel(
+                factory = AdvancedViewModel.Factory(appContainer.appSettings),
+            )
+            AdvancedScreen(
+                viewModel = viewModel,
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(NavRoutes.ABOUT) {
+            AboutScreen(
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
         composable(NavRoutes.ADD_GAME) {
             val viewModel: AddGameViewModel = viewModel(
                 factory = AddGameViewModel.Factory(appContainer.gameRepository, appContainer.f95ZoneScraper, appContainer.appSettings),
@@ -199,7 +252,11 @@ private fun GameVaultNavHost(
             val gameId = backStackEntry.arguments?.getLong("gameId") ?: return@composable
             val viewModel: GameDetailViewModel = viewModel(
                 key = "game_$gameId",
-                factory = GameDetailViewModel.Factory(gameId, appContainer.gameRepository),
+                factory = GameDetailViewModel.Factory(
+                    gameId,
+                    appContainer.gameRepository,
+                    appContainer.appSettings,
+                ),
             )
             GameDetailScreen(
                 viewModel = viewModel,
@@ -235,8 +292,7 @@ private fun GameVaultNavHost(
 private fun MainTabsScreen(
     appContainer: AppContainer,
     onGameClick: (Long) -> Unit,
-    onSettingsClick: () -> Unit,
-    onCollectionsClick: () -> Unit,
+    onMoreItemClick: (MoreEntry) -> Unit,
     onSourceClick: (String) -> Unit,
 ) {
     var selectedTabIndex by rememberSaveable { mutableIntStateOf(0) }
@@ -317,8 +373,7 @@ private fun MainTabsScreen(
 
                 3 -> {
                     MoreScreen(
-                        onCollectionsClick = onCollectionsClick,
-                        onSettingsClick = onSettingsClick,
+                        onItemClick = onMoreItemClick,
                     )
                 }
             }

@@ -12,6 +12,10 @@ object NavRoutes {
     const val SETTINGS = "settings"
     const val SETTINGS_SECTION = "settings?section={section}"
     const val SETTINGS_APPEARANCE = "settings/appearance"
+    const val STATISTICS = "more/statistics"
+    const val SECURITY_INFO = "more/security"
+    const val ADVANCED = "more/advanced"
+    const val ABOUT = "more/about"
 
     fun settings(section: String? = null) =
         if (section == null) SETTINGS else "settings?section=$section"

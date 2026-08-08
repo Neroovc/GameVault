@@ -64,7 +64,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.gamevault.app.BuildConfig
 import com.gamevault.app.data.settings.SourceRequestPace
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,13 +81,13 @@ fun SettingsScreen(
 
     // Scroll to the section CONTENT (not the header) so the section header
     // stays visible right above. Indices match the LazyColumn item order:
-    // appearance=1, library=4, collections=7, backup=9.
+    // appearance=1, library=3, collections=6, backup=8.
     LaunchedEffect(initialSection) {
         val index = when (initialSection) {
             "appearance" -> 1
-            "library" -> 4
-            "collections" -> 7
-            "backup" -> 9
+            "library" -> 3
+            "collections" -> 6
+            "backup" -> 8
             else -> return@LaunchedEffect
         }
         listState.scrollToItem(index)
@@ -147,7 +146,6 @@ fun SettingsScreen(
                     modifier = Modifier.clickable { onAppearanceClick() },
                 )
             }
-            item { AboutSection() }
 
             // Library
             item { SectionHeader("Library") }
@@ -496,28 +494,6 @@ private fun BackupSection(
                 Spacer(Modifier.width(8.dp))
                 Text(if (isImporting) "Importing..." else "Import Backup")
             }
-        }
-    }
-}
-
-@Composable
-private fun AboutSection() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("About", style = MaterialTheme.typography.titleSmall)
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "GameVault",
-                style = MaterialTheme.typography.bodyLarge,
-            )
-            Text(
-                text = "Version ${BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }

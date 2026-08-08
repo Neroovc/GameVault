@@ -88,6 +88,7 @@ class AppSettings(private val context: Context) {
         val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
         val SOURCE_REQUEST_PACE = intPreferencesKey("source_request_pace")
+        val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
     }
 
     private val LEGACY_SHOW_ENGINE_SOURCE = booleanPreferencesKey("show_engine_source")
@@ -260,6 +261,18 @@ class AppSettings(private val context: Context) {
     suspend fun setSourceRequestPace(pace: SourceRequestPace) {
         context.dataStore.edit { prefs ->
             prefs[Keys.SOURCE_REQUEST_PACE] = pace.value
+        }
+    }
+
+    /** Observe incognito mode. When enabled, play sessions are NOT recorded. Defaults to false. */
+    val incognitoMode: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.INCOGNITO_MODE] ?: false
+    }
+
+    /** Persist incognito mode. */
+    suspend fun setIncognitoMode(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.INCOGNITO_MODE] = enabled
         }
     }
 }
