@@ -95,6 +95,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.data.settings.GridMode
+import com.gamevault.app.data.settings.RatingStyle
 import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
@@ -353,6 +354,8 @@ fun LibraryScreen(
             onShowSourceChanged = viewModel::onShowSourceChanged,
             onShowStatusChanged = viewModel::onShowStatusChanged,
             onStatusStyleChanged = viewModel::onStatusStyleChanged,
+            ratingStyle = uiState.ratingStyle,
+            onRatingStyleChanged = viewModel::onRatingStyleChanged,
         )
     }
 
@@ -593,6 +596,7 @@ private fun LibraryGridPage(
                             showSource = uiState.showSource,
                             showStatus = uiState.showStatus,
                             statusStyle = uiState.statusStyle,
+                            ratingStyle = uiState.ratingStyle,
                             onClick = {
                                 if (isSelectionMode) {
                                     selectionViewModel.toggleSelection(item.game.id)
@@ -678,6 +682,8 @@ private fun FilterSortSheet(
     onShowSourceChanged: (Boolean) -> Unit,
     onShowStatusChanged: (Boolean) -> Unit,
     onStatusStyleChanged: (StatusStyle) -> Unit,
+    ratingStyle: RatingStyle,
+    onRatingStyleChanged: (RatingStyle) -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -731,6 +737,8 @@ private fun FilterSortSheet(
                         onShowStatusChanged = onShowStatusChanged,
                         statusStyle = uiState.statusStyle,
                         onStatusStyleChanged = onStatusStyleChanged,
+                        ratingStyle = ratingStyle,
+                        onRatingStyleChanged = onRatingStyleChanged,
                     )
                     3 -> GroupTab(
                         current = uiState.groupBy,
@@ -819,6 +827,8 @@ private fun AppearanceTab(
     onShowStatusChanged: (Boolean) -> Unit,
     statusStyle: StatusStyle,
     onStatusStyleChanged: (StatusStyle) -> Unit,
+    ratingStyle: RatingStyle,
+    onRatingStyleChanged: (RatingStyle) -> Unit,
 ) {
     SheetPageColumn {
         SectionLabel("Grid mode")
@@ -865,6 +875,21 @@ private fun AppearanceTab(
                         label = { Text(style.displayName, style = MaterialTheme.typography.labelSmall) },
                     )
                 }
+            }
+        }
+        HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
+        SectionLabel("Rating style")
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RatingStyle.entries.forEach { style ->
+                FilterChip(
+                    selected = ratingStyle == style,
+                    onClick = { onRatingStyleChanged(style) },
+                    label = { Text(style.displayName, style = MaterialTheme.typography.labelSmall) },
+                )
             }
         }
     }

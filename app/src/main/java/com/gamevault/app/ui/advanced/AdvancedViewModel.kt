@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.data.settings.RatingStyle
 import com.gamevault.app.data.settings.StatusStyle
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,7 @@ data class AdvancedUiState(
     val showSource: Boolean = true,
     val showStatus: Boolean = true,
     val statusStyle: StatusStyle = StatusStyle.TOP_BAR,
+    val ratingStyle: RatingStyle = RatingStyle.STAR,
 )
 
 class AdvancedViewModel(
@@ -27,12 +29,14 @@ class AdvancedViewModel(
         appSettings.showSource,
         appSettings.showStatus,
         appSettings.statusStyle,
-    ) { engine, source, status, style ->
+        appSettings.ratingStyle,
+    ) { engine, source, status, style, ratingStyle ->
         AdvancedUiState(
             showEngine = engine,
             showSource = source,
             showStatus = status,
             statusStyle = style,
+            ratingStyle = ratingStyle,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -54,6 +58,10 @@ class AdvancedViewModel(
 
     fun setStatusStyle(style: StatusStyle) {
         viewModelScope.launch { appSettings.setStatusStyle(style) }
+    }
+
+    fun setRatingStyle(style: RatingStyle) {
+        viewModelScope.launch { appSettings.setRatingStyle(style) }
     }
 
     class Factory(

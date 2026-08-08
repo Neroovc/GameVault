@@ -13,6 +13,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -67,6 +68,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -490,23 +492,24 @@ private fun GameHeader(
                     Box {
                         FilledTonalButton(
                             onClick = { statusMenuExpanded = true },
-                            modifier = Modifier.height(32.dp),
+                            modifier = Modifier.height(28.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                         ) {
                             Icon(
                                 imageVector = statusMetaIcon(game.status),
                                 contentDescription = null,
-                                modifier = Modifier.size(16.dp),
+                                modifier = Modifier.size(14.dp),
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = game.status.displayName,
-                                style = MaterialTheme.typography.labelMedium,
+                                style = MaterialTheme.typography.labelSmall,
                             )
                             Spacer(modifier = Modifier.width(2.dp))
                             Icon(
                                 imageVector = Icons.Default.ArrowDropDown,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp),
+                                modifier = Modifier.size(14.dp),
                             )
                         }
                         DropdownMenu(
@@ -598,29 +601,39 @@ private fun RatingBar(
     rating: Float,
     onRatingChange: (Float) -> Unit,
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        (1..5).forEach { star ->
-            val filled = rating >= star
-            IconButton(onClick = {
-                val newRating = if (rating == star.toFloat()) star - 0.5f else star.toFloat()
-                onRatingChange(newRating.coerceIn(0.5f, 5.0f))
-            }) {
-                Icon(
-                    imageVector = if (filled) Icons.Filled.Star
-                    else if (rating >= star - 0.5f) Icons.Filled.Star
-                    else Icons.Outlined.StarBorder,
-                    contentDescription = "Star $star",
-                    tint = if (filled || rating >= star - 0.5f)
-                        MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                    modifier = Modifier.size(24.dp),
-                )
+    val sliderValue = rating.coerceIn(0.5f, 5.0f)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            (1..5).forEach { star ->
+                val filled = rating >= star
+                IconButton(onClick = {
+                    val newRating = if (rating == star.toFloat()) star - 0.5f else star.toFloat()
+                    onRatingChange(newRating.coerceIn(0.5f, 5.0f))
+                }) {
+                    Icon(
+                        imageVector = if (filled) Icons.Filled.Star
+                        else if (rating >= star - 0.5f) Icons.Filled.Star
+                        else Icons.Outlined.StarBorder,
+                        contentDescription = "Star $star",
+                        tint = if (filled || rating >= star - 0.5f)
+                            MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
+                        modifier = Modifier.size(24.dp),
+                    )
+                }
             }
+            Text(
+                text = if (rating > 0) String.format("%.1f", rating) else "",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
         }
-        Text(
-            text = if (rating > 0) String.format("%.1f", rating) else "",
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+        Slider(
+            value = sliderValue,
+            onValueChange = onRatingChange,
+            valueRange = 0.5f..5.0f,
+            steps = 44,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }

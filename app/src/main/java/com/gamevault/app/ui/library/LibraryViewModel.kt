@@ -9,6 +9,7 @@ import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.SourceType
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.GridMode
+import com.gamevault.app.data.settings.RatingStyle
 import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.Dispatchers
@@ -45,6 +46,7 @@ data class LibraryUiState(
     val showSource: Boolean = true,
     val showStatus: Boolean = true,
     val statusStyle: StatusStyle = StatusStyle.TOP_BAR,
+    val ratingStyle: RatingStyle = RatingStyle.STAR,
     val displayItems: LibraryDisplayItems = LibraryDisplayItems(emptyList(), emptyList()),
 )
 
@@ -259,6 +261,7 @@ class LibraryViewModel(
         val showSource: Boolean,
         val showStatus: Boolean,
         val statusStyle: StatusStyle,
+        val ratingStyle: RatingStyle,
     )
 
     private val overlayPrefs: Flow<OverlayPrefs> = combine(
@@ -266,8 +269,9 @@ class LibraryViewModel(
         appSettings.showSource,
         appSettings.showStatus,
         appSettings.statusStyle,
-    ) { engine, source, status, style ->
-        OverlayPrefs(engine, source, status, style)
+        appSettings.ratingStyle,
+    ) { engine, source, status, style, ratingStyle ->
+        OverlayPrefs(engine, source, status, style, ratingStyle)
     }
 
     private val stripTabsFlow: StateFlow<List<StripTab>> = combine(
@@ -343,6 +347,7 @@ class LibraryViewModel(
             showSource = prefs.showSource,
             showStatus = prefs.showStatus,
             statusStyle = prefs.statusStyle,
+            ratingStyle = prefs.ratingStyle,
             searchQuery = rawQuery,
             stripTabs = tabs,
             displayItems = displayItems,
@@ -388,6 +393,10 @@ class LibraryViewModel(
 
     fun onStatusStyleChanged(style: StatusStyle) {
         viewModelScope.launch { appSettings.setStatusStyle(style) }
+    }
+
+    fun onRatingStyleChanged(style: RatingStyle) {
+        viewModelScope.launch { appSettings.setRatingStyle(style) }
     }
 
     fun deleteGame(gameId: Long) {

@@ -36,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import com.gamevault.app.data.settings.RatingStyle
 import com.gamevault.app.data.settings.StatusStyle
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,6 +123,49 @@ fun AdvancedScreen(
                                 ) {
                                     RadioButton(
                                         selected = state.statusStyle == style,
+                                        onClick = null,
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text(
+                                        text = style.displayName,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item { SectionLabel("Rating style") }
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "How the rating is shown on library cards",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Column(modifier = Modifier.selectableGroup()) {
+                            RatingStyle.entries.forEach { style ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .selectable(
+                                            selected = state.ratingStyle == style,
+                                            onClick = { viewModel.setRatingStyle(style) },
+                                            role = Role.RadioButton,
+                                        )
+                                        .padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    RadioButton(
+                                        selected = state.ratingStyle == style,
                                         onClick = null,
                                     )
                                     Spacer(modifier = Modifier.width(12.dp))

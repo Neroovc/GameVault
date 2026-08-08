@@ -53,6 +53,11 @@ enum class StatusStyle(val displayName: String) {
     BADGE("Badge");
 }
 
+enum class RatingStyle(val displayName: String) {
+    STAR("Star"),
+    NUMBER("Number");
+}
+
 enum class SourceRequestPace(
     val value: Int,
     val displayName: String,
@@ -84,6 +89,7 @@ class AppSettings(private val context: Context) {
         val SHOW_SOURCE = booleanPreferencesKey("show_source")
         val SHOW_STATUS = booleanPreferencesKey("show_status")
         val STATUS_STYLE = stringPreferencesKey("status_style")
+        val RATING_STYLE = stringPreferencesKey("rating_style")
         val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
         val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
@@ -188,6 +194,20 @@ class AppSettings(private val context: Context) {
     suspend fun setStatusStyle(style: StatusStyle) {
         context.dataStore.edit { prefs ->
             prefs[Keys.STATUS_STYLE] = style.name
+        }
+    }
+
+    /** Observe the rating badge style on library cards. Defaults to STAR. */
+    val ratingStyle: Flow<RatingStyle> = context.dataStore.data.map { prefs ->
+        prefs[Keys.RATING_STYLE]?.let { name ->
+            runCatching { RatingStyle.valueOf(name) }.getOrDefault(RatingStyle.STAR)
+        } ?: RatingStyle.STAR
+    }
+
+    /** Persist the rating badge style. */
+    suspend fun setRatingStyle(style: RatingStyle) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.RATING_STYLE] = style.name
         }
     }
 

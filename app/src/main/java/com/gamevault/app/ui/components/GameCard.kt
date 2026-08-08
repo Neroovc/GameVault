@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.gamevault.app.R
 import com.gamevault.app.data.settings.GridMode
+import com.gamevault.app.data.settings.RatingStyle
 import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
@@ -69,6 +70,7 @@ fun GameCard(
     showSource: Boolean = true,
     showStatus: Boolean = true,
     statusStyle: StatusStyle = StatusStyle.TOP_BAR,
+    ratingStyle: RatingStyle = RatingStyle.STAR,
 ) {
     Card(
         modifier = modifier
@@ -104,6 +106,7 @@ fun GameCard(
                     showSource = showSource,
                     showStatus = showStatus,
                     statusStyle = statusStyle,
+                    ratingStyle = ratingStyle,
                 )
             } else {
                 GridContent(
@@ -114,6 +117,7 @@ fun GameCard(
                     showSource = showSource,
                     showStatus = showStatus,
                     statusStyle = statusStyle,
+                    ratingStyle = ratingStyle,
                 )
             }
         }
@@ -129,6 +133,7 @@ private fun GridContent(
     showSource: Boolean,
     showStatus: Boolean,
     statusStyle: StatusStyle,
+    ratingStyle: RatingStyle,
 ) {
     Column {
         // ── Cover ──
@@ -209,6 +214,7 @@ private fun GridContent(
             if (game.personalRating != null) {
                 RatingPill(
                     rating = game.personalRating,
+                    ratingStyle = ratingStyle,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .padding(6.dp),
@@ -221,7 +227,7 @@ private fun GridContent(
                     text = game.title,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(start = 8.dp, end = 56.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = Color.White,
@@ -254,6 +260,7 @@ private fun ListContent(
     showSource: Boolean,
     showStatus: Boolean,
     statusStyle: StatusStyle,
+    ratingStyle: RatingStyle,
 ) {
     Row(modifier = Modifier.height(IntrinsicSize.Min)) {
         // ── Thumbnail ──
@@ -352,17 +359,24 @@ private fun ListContent(
             // Rating row
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (game.personalRating != null) {
-                    Icon(
-                        imageVector = Icons.Filled.Star,
-                        contentDescription = null,
-                        modifier = Modifier.size(14.dp),
-                        tint = Color(0xFFFFB300),
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
+                    val color = ratingColor(game.personalRating)
+                    if (ratingStyle == RatingStyle.STAR) {
+                        Icon(
+                            imageVector = Icons.Filled.Star,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = color,
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                    }
                     Text(
                         text = formatRating(game.personalRating),
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (ratingStyle == RatingStyle.STAR) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            color
+                        },
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                 }
@@ -542,6 +556,7 @@ private fun StatusBadge(
 @Composable
 private fun RatingPill(
     rating: Float,
+    ratingStyle: RatingStyle,
     modifier: Modifier = Modifier,
 ) {
     Card(
@@ -551,25 +566,49 @@ private fun RatingPill(
             containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         ),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Star,
-                contentDescription = null,
-                modifier = Modifier.size(10.dp),
-                tint = Color(0xFFFFB300),
-            )
-            Spacer(modifier = Modifier.width(2.dp))
-            Text(
-                text = formatRating(rating),
-                style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
+        if (ratingStyle == RatingStyle.STAR) {
+            Row(
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Star,
+                    contentDescription = null,
+                    modifier = Modifier.size(10.dp),
+                    tint = ratingColor(rating),
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = formatRating(rating),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 1.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = formatRating(rating),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ratingColor(rating),
+                )
+            }
         }
     }
+}
+
+/**
+ * Rating badge color by value: red below 2.0, amber below 3.5, green otherwise.
+ * Used by [RatingPill] and the list-mode rating row.
+ */
+private fun ratingColor(rating: Float): Color = when {
+    rating < 2.0f -> Color(0xFFE53935)
+    rating < 3.5f -> Color(0xFFFFB300)
+    else -> Color(0xFF43A047)
 }
 
 private fun formatRating(rating: Float): String {
