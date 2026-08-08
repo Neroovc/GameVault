@@ -10,15 +10,12 @@ object NavRoutes {
     const val COLLECTIONS = "collections"
     const val COLLECTION_GAMES = "collection/{collectionId}"
     const val SETTINGS = "settings"
-    const val SETTINGS_SECTION = "settings?section={section}"
     const val SETTINGS_APPEARANCE = "settings/appearance"
     const val STATISTICS = "more/statistics"
     const val SECURITY_INFO = "more/security"
     const val ADVANCED = "more/advanced"
+    const val DATA_STORAGE = "more/data-storage"
     const val ABOUT = "more/about"
-
-    fun settings(section: String? = null) =
-        if (section == null) SETTINGS else "settings?section=$section"
     const val HISTORY = "history"
     const val SEARCH = "search"
     const val SOURCE_BROWSE = "extensions/{sourceId}"

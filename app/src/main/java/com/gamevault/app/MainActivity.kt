@@ -30,6 +30,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -44,6 +45,10 @@ import com.gamevault.app.ui.advanced.AdvancedScreen
 import com.gamevault.app.ui.advanced.AdvancedViewModel
 import com.gamevault.app.ui.browser.BrowserScreen
 import com.gamevault.app.ui.browser.SourceBrowseScreen
+import com.gamevault.app.ui.collections.CollectionsScreen
+import com.gamevault.app.ui.collections.CollectionsViewModel
+import com.gamevault.app.ui.datastorage.DataStorageScreen
+import com.gamevault.app.ui.datastorage.DataStorageViewModel
 import com.gamevault.app.ui.detail.GameDetailScreen
 import com.gamevault.app.ui.detail.GameDetailViewModel
 import com.gamevault.app.ui.history.HistoryScreen
@@ -120,11 +125,12 @@ private fun GameVaultNavHost(
                 },
                 onMoreItemClick = { entry ->
                     when (entry) {
-                        MoreEntry.COLLECTIONS -> rootNavController.navigate(NavRoutes.settings("collections"))
+                        MoreEntry.COLLECTIONS -> rootNavController.navigate(NavRoutes.COLLECTIONS)
                         MoreEntry.APPEARANCE -> rootNavController.navigate(NavRoutes.SETTINGS_APPEARANCE)
                         MoreEntry.STATISTICS -> rootNavController.navigate(NavRoutes.STATISTICS)
                         MoreEntry.SECURITY -> rootNavController.navigate(NavRoutes.SECURITY_INFO)
                         MoreEntry.ADVANCED -> rootNavController.navigate(NavRoutes.ADVANCED)
+                        MoreEntry.DATA_STORAGE -> rootNavController.navigate(NavRoutes.DATA_STORAGE)
                         MoreEntry.SETTINGS -> rootNavController.navigate(NavRoutes.SETTINGS)
                         MoreEntry.ABOUT -> rootNavController.navigate(NavRoutes.ABOUT)
                     }
@@ -155,29 +161,37 @@ private fun GameVaultNavHost(
             )
         }
 
-        composable(
-            NavRoutes.SETTINGS_SECTION,
-            arguments = listOf(
-                navArgument("section") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                }
-            ),
-        ) { backStackEntry ->
-            val section = backStackEntry.arguments?.getString("section")
+        composable(NavRoutes.SETTINGS) {
             val viewModel: SettingsViewModel = viewModel(
                 key = "shared_settings_vm",
                 factory = SettingsViewModel.Factory(
                     appSettings = appContainer.appSettings,
                     repository = appContainer.gameRepository,
-                    backup = appContainer.gameVaultBackup,
                 )
             )
             SettingsScreen(
                 viewModel = viewModel,
-                initialSection = section,
-                onAppearanceClick = { rootNavController.navigate(NavRoutes.SETTINGS_APPEARANCE) },
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(NavRoutes.COLLECTIONS) {
+            val viewModel: CollectionsViewModel = viewModel(
+                factory = CollectionsViewModel.Factory(appContainer.gameRepository),
+            )
+            CollectionsScreen(
+                viewModel = viewModel,
+                onNavigateBack = { rootNavController.popBackStack() },
+            )
+        }
+
+        composable(NavRoutes.DATA_STORAGE) {
+            val context = LocalContext.current.applicationContext
+            val viewModel: DataStorageViewModel = viewModel(
+                factory = DataStorageViewModel.Factory(appContainer.gameVaultBackup, context),
+            )
+            DataStorageScreen(
+                viewModel = viewModel,
                 onNavigateBack = { rootNavController.popBackStack() },
             )
         }
@@ -188,7 +202,6 @@ private fun GameVaultNavHost(
                 factory = SettingsViewModel.Factory(
                     appSettings = appContainer.appSettings,
                     repository = appContainer.gameRepository,
-                    backup = appContainer.gameVaultBackup,
                 )
             )
             AppearanceScreen(

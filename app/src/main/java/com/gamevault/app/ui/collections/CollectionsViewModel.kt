@@ -9,11 +9,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -24,10 +22,10 @@ data class CollectionWithCount(
 
 data class CollectionsUiState(
     val collections: List<CollectionWithCount> = emptyList(),
-    val isLoading: Boolean = true,
     val showCreateDialog: Boolean = false,
+    val showRenameDialog: Boolean = false,
+    val renameTarget: Collection? = null,
     val newCollectionName: String = "",
-    val newCollectionDescription: String = "",
 )
 
 class CollectionsViewModel(
@@ -35,8 +33,9 @@ class CollectionsViewModel(
 ) : ViewModel() {
 
     private val _showCreateDialog = MutableStateFlow(false)
-    private val _newName = MutableStateFlow("")
-    private val _newDescription = MutableStateFlow("")
+    private val _showRenameDialog = MutableStateFlow(false)
+    private val _renameTarget = MutableStateFlow<Collection?>(null)
+    private val _newCollectionName = MutableStateFlow("")
 
     @OptIn(ExperimentalCoroutinesApi::class)
     private val collectionsWithCount: StateFlow<List<CollectionWithCount>> =
@@ -55,43 +54,65 @@ class CollectionsViewModel(
     val uiState: StateFlow<CollectionsUiState> = combine(
         collectionsWithCount,
         _showCreateDialog,
-        _newName,
-        _newDescription,
-    ) { collections, showDlg, name, desc ->
+        _showRenameDialog,
+        _renameTarget,
+        _newCollectionName,
+    ) { collections, showCreate, showRename, renameTarget, newName ->
         CollectionsUiState(
             collections = collections,
-            isLoading = false,
-            showCreateDialog = showDlg,
-            newCollectionName = name,
-            newCollectionDescription = desc,
+            showCreateDialog = showCreate,
+            showRenameDialog = showRename,
+            renameTarget = renameTarget,
+            newCollectionName = newName,
         )
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5_000),
-        initialValue = CollectionsUiState(isLoading = true),
+        initialValue = CollectionsUiState(),
     )
+
+    fun onNewCollectionNameChange(name: String) {
+        _newCollectionName.value = name
+    }
 
     fun showCreateDialog() {
         _showCreateDialog.value = true
+        _newCollectionName.value = ""
     }
 
     fun dismissCreateDialog() {
         _showCreateDialog.value = false
-        _newName.value = ""
-        _newDescription.value = ""
+        _newCollectionName.value = ""
     }
 
-    fun setNewName(name: String) { _newName.value = name }
-    fun setNewDescription(desc: String) { _newDescription.value = desc }
-
     fun createCollection() {
-        val name = _newName.value.trim()
+        val name = _newCollectionName.value.trim()
         if (name.isBlank()) return
         viewModelScope.launch {
-            repository.saveCollection(
-                Collection(name = name, description = _newDescription.value.ifBlank { null })
-            )
+            repository.saveCollection(Collection(name = name))
             dismissCreateDialog()
+        }
+    }
+
+    fun showRenameDialog(collection: Collection) {
+        _renameTarget.value = collection
+        _newCollectionName.value = collection.name
+        _showRenameDialog.value = true
+    }
+
+    fun dismissRenameDialog() {
+        _showRenameDialog.value = false
+        _renameTarget.value = null
+        _newCollectionName.value = ""
+    }
+
+    fun renameCollection() {
+        val target = _renameTarget.value ?: return
+        val name = _newCollectionName.value.trim()
+        if (name.isBlank()) return
+        viewModelScope.launch {
+            repository.updateCollection(target.copy(name = name))
+            dismissRenameDialog()
         }
     }
 
