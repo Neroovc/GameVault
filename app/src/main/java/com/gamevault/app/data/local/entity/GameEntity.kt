@@ -9,6 +9,8 @@ import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.SourceType
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 @Entity(
     tableName = "games",
@@ -66,7 +68,26 @@ data class GameEntity(
 
     @ColumnInfo(name = "source_url")
     val sourceUrl: String? = null,
+
+    val changelog: String? = null,
+
+    @ColumnInfo(name = "dev_links")
+    val devLinks: String? = null,        // JSON-serialized List<String>, null = none
 )
+
+private val devLinksJsonType = object : TypeToken<List<String>>() {}.type
+
+private fun parseDevLinks(raw: String?): List<String> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return runCatching {
+        Gson().fromJson<List<String>>(raw, devLinksJsonType)
+    }.getOrElse { emptyList() }
+}
+
+private fun serializeDevLinks(links: List<String>): String? {
+    if (links.isEmpty()) return null
+    return runCatching { Gson().toJson(links) }.getOrNull()
+}
 
 fun GameEntity.toDomainModel(): Game = Game(
     id = id,
@@ -88,6 +109,8 @@ fun GameEntity.toDomainModel(): Game = Game(
     f95Url = f95Url,
     sourceType = runCatching { SourceType.valueOf(sourceType) }.getOrElse { SourceType.MANUAL },
     sourceUrl = sourceUrl,
+    changelog = changelog,
+    devLinks = parseDevLinks(devLinks),
 )
 
 fun Game.toEntity(): GameEntity = GameEntity(
@@ -110,4 +133,6 @@ fun Game.toEntity(): GameEntity = GameEntity(
     f95Url = f95Url,
     sourceType = sourceType.name,
     sourceUrl = sourceUrl,
+    changelog = changelog,
+    devLinks = serializeDevLinks(devLinks),
 )

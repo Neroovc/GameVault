@@ -9,6 +9,7 @@ import org.jsoup.HttpStatusException
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.parser.Parser
 import java.net.URLEncoder
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicLong
@@ -73,6 +74,8 @@ class F95ZoneScraper {
                     developer = extractDeveloper(doc),
                     engine = extractEngine(doc),
                     version = extractVersion(doc),
+                    changelog = extractChangelog(doc),
+                    devLinks = extractDevLinks(doc),
                     coverUrl = extractCoverUrl(doc),
                     f95Url = url,
                     f95Rating = extractRating(doc),
@@ -261,8 +264,82 @@ class F95ZoneScraper {
     }
 
     private fun extractDeveloper(doc: Document): String? {
-        // F95Zone often lists the OP author as the developer
-        return doc.selectFirst("article[data-author]")?.attr("data-author")
+        // Prefer the real developer from the post's info table — F95Zone
+        // lists it under "Developers:" (sometimes "Studio:"). Fall back to
+        // the OP author when no label row is present.
+        return extractInfoValue(doc, "Developers", "Developer", "Studio")
+            ?: doc.selectFirst("article[data-author]")?.attr("data-author")
+    }
+
+    /** Reads a "Label: value" pair from the thread's info table (dl.pairsJustified). */
+    private fun extractInfoValue(doc: Document, vararg labels: String): String? {
+        val wanted = labels.map { it.lowercase() }
+        for (row in doc.select("dl.pairsJustified")) {
+            val label = row.selectFirst("dt")?.text()?.trim()?.lowercase() ?: continue
+            if (label in wanted) {
+                val value = row.selectFirst("dd")?.text()?.trim()
+                if (!value.isNullOrBlank()) return value
+            }
+        }
+        return null
+    }
+
+    /**
+     * Extracts the changelog section from the first post body (markers:
+     * "Changelog" / "Change Log"), up to 600 chars. Null when absent.
+     */
+    private fun extractChangelog(doc: Document): String? {
+        val body = doc.selectFirst("article.message-body .bbWrapper") ?: return null
+        val lines = flattenHtmlToLines(body.html())
+        val marker = Regex("""(?i)\b(?:changelog|change\s*log)\b""")
+        val idx = lines.indexOfFirst { marker.containsMatchIn(it) }
+        if (idx < 0) return null
+
+        // Content after the marker on the same line, plus the lines that follow.
+        val markerMatch = marker.find(lines[idx]) ?: return null
+        val rest = lines[idx].substring(markerMatch.range.last + 1).trim()
+        val out = StringBuilder()
+        if (rest.isNotEmpty()) {
+            out.append(rest).append('\n')
+        }
+        for (i in idx + 1 until lines.size) {
+            val line = lines[i].trim()
+            if (line.isEmpty()) continue
+            out.append(line).append('\n')
+            if (out.length >= 600) break
+        }
+        return out.toString().trim().takeIf { it.isNotBlank() }?.take(600)
+    }
+
+    /**
+     * External links from the first post (dev site, Patreon, Discord, ...).
+     * Forum-internal links (f95zone.to / f95zone.com / relative paths) are
+     * filtered out. Max 4, deduplicated.
+     */
+    private fun extractDevLinks(doc: Document): List<String> {
+        val body = doc.selectFirst("article.message-body .bbWrapper")
+            ?: return emptyList()
+        return body.select("a[href]")
+            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+            .filter { href ->
+                !href.contains("f95zone.to", ignoreCase = true) &&
+                    !href.contains("f95zone.com", ignoreCase = true) &&
+                    !href.startsWith("/") &&
+                    !href.startsWith("#")
+            }
+            .distinct()
+            .take(4)
+    }
+
+    /** Converts body HTML to text with one element per line. */
+    private fun flattenHtmlToLines(html: String): List<String> {
+        val asLines = html
+            .replace(Regex("""<br\s*/?>"""), "\n")
+            .replace(Regex("""</?(?:p|div|li|tr|td|th|h[1-6])(?:\s[^>]*)?>"""), "\n")
+            .replace(Regex("""<[^>]+>"""), " ")
+        return asLines.lines()
+            .map { Parser.unescapeEntities(it, false).replace(Regex("""\s+"""), " ").trim() }
+            .filter { it.isNotBlank() }
     }
 
     private fun extractEngine(doc: Document): GameEngine? {

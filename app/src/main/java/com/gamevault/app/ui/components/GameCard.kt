@@ -367,17 +367,13 @@ private fun ListContent(
                             modifier = Modifier.size(14.dp),
                             tint = color,
                         )
-                        Spacer(modifier = Modifier.width(2.dp))
+                    } else {
+                        Text(
+                            text = formatRating(game.personalRating),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = color,
+                        )
                     }
-                    Text(
-                        text = formatRating(game.personalRating),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (ratingStyle == RatingStyle.STAR) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        } else {
-                            color
-                        },
-                    )
                     Spacer(modifier = Modifier.width(12.dp))
                 }
 
@@ -576,13 +572,6 @@ private fun RatingPill(
                     contentDescription = null,
                     modifier = Modifier.size(10.dp),
                     tint = ratingColor(rating),
-                )
-                Spacer(modifier = Modifier.width(2.dp))
-                Text(
-                    text = formatRating(rating),
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
                 )
             }
         } else {

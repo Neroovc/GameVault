@@ -87,6 +87,8 @@ class ItchScraper {
                     developer = extractDeveloper(doc),
                     engine = extractEngine(doc),
                     version = null,
+                    changelog = null,
+                    devLinks = extractDevLinks(doc, url),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -187,6 +189,25 @@ class ItchScraper {
         }
 
         return null
+    }
+
+    /**
+     * Best effort: the developer profile link from the game info panel —
+     * any absolute link on that panel that is not the game page itself.
+     * Never throws; empty list when the panel markup is uncertain.
+     */
+    private fun extractDevLinks(doc: Document, pageUrl: String): List<String> {
+        return runCatching {
+            val normalizedPage = pageUrl.trimEnd('/')
+            doc.select(".game_info_panel a[href]")
+                .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+                .filter { href ->
+                    (href.startsWith("https://") || href.startsWith("http://")) &&
+                        href.trimEnd('/') != normalizedPage
+                }
+                .distinct()
+                .take(1)
+        }.getOrElse { emptyList() }
     }
 
     private fun extractTags(doc: Document): List<Tag> {

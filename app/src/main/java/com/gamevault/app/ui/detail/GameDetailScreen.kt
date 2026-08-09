@@ -1,5 +1,7 @@
 package com.gamevault.app.ui.detail
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -269,6 +271,11 @@ fun GameDetailScreen(
                     item {
                         GenresRow(tags = game.tags)
                     }
+                }
+
+                // Details: developer, engine, version, changelog, links
+                item {
+                    DetailsSection(game = game)
                 }
 
                 // Routes section
@@ -576,14 +583,6 @@ private fun GameHeader(
                 }
             }
 
-            if (game.engine != null) {
-                Text(
-                    text = game.engine.displayName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.tertiary,
-                )
-            }
-
             if (onRatingChange != null) {
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -605,20 +604,23 @@ private fun RatingBar(
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             (1..5).forEach { star ->
-                val filled = rating >= star
-                IconButton(onClick = {
-                    val newRating = if (rating == star.toFloat()) star - 0.5f else star.toFloat()
-                    onRatingChange(newRating.coerceIn(0.5f, 5.0f))
-                }) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable {
+                            val newRating = if (rating == star.toFloat()) star - 0.5f else star.toFloat()
+                            onRatingChange(newRating.coerceIn(0.5f, 5.0f))
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(
-                        imageVector = if (filled) Icons.Filled.Star
-                        else if (rating >= star - 0.5f) Icons.Filled.Star
+                        imageVector = if (rating >= star - 0.5f) Icons.Filled.Star
                         else Icons.Outlined.StarBorder,
                         contentDescription = "Star $star",
-                        tint = if (filled || rating >= star - 0.5f)
+                        tint = if (rating >= star - 0.5f)
                             MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f),
-                        modifier = Modifier.size(24.dp),
+                        modifier = Modifier.size(18.dp),
                     )
                 }
             }
@@ -633,7 +635,19 @@ private fun RatingBar(
             onValueChange = onRatingChange,
             valueRange = 0.5f..5.0f,
             steps = 44,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp),
+            // Compact thumb: shrink the default 20dp circle to 12dp; the
+            // default track is kept (custom track needs SliderState internals).
+            thumb = {
+                Box(
+                    Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primary)
+                )
+            },
         )
     }
 }
@@ -812,7 +826,7 @@ private fun GameDetailPreviewContent(
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            // Header: cover + title/developer/engine/source (no rating).
+            // Header: cover + title/developer/source (no rating).
             item {
                 GameHeader(
                     game = game,
@@ -854,6 +868,11 @@ private fun GameDetailPreviewContent(
                 item {
                     GenresRow(tags = game.tags)
                 }
+            }
+
+            // Details: developer, engine, version, changelog, links
+            item {
+                DetailsSection(game = game)
             }
 
             item {
@@ -1192,6 +1211,148 @@ private fun GenresRow(tags: List<com.gamevault.app.domain.model.Tag>) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Key/value metadata card shown below the description and genres: developer,
+ * engine, version, changelog, the game page link and developer links.
+ * Rows are omitted entirely when the value is missing.
+ */
+@Composable
+private fun DetailsSection(
+    game: com.gamevault.app.domain.model.Game,
+) {
+    val context = LocalContext.current
+    val gamePageUrl = game.f95Url ?: game.sourceUrl
+    val devLinks = game.devLinks.take(4)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Details", style = MaterialTheme.typography.titleSmall)
+
+            if (!game.developer.isNullOrBlank()) {
+                DetailsRow(label = "Developer", value = game.developer)
+            }
+            if (game.engine != null) {
+                DetailsRow(label = "Engine", value = game.engine.displayName)
+            }
+            if (!game.version.isNullOrBlank()) {
+                DetailsRow(label = "Version", value = game.version)
+            }
+            if (!game.changelog.isNullOrBlank()) {
+                DetailsRow(label = "Changelog", value = game.changelog, maxLines = 4)
+            }
+
+            if (gamePageUrl != null) {
+                DetailsDivider()
+                DetailsLinkRow(
+                    label = "Game page",
+                    value = gamePageUrl,
+                    onOpen = { openUrl(context, gamePageUrl) },
+                )
+            }
+
+            if (devLinks.isNotEmpty()) {
+                DetailsDivider()
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    Text(
+                        text = "Developer links",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    devLinks.forEachIndexed { index, link ->
+                        if (index > 0) DetailsDivider()
+                        DetailsLinkRow(
+                            value = link,
+                            onOpen = { openUrl(context, link) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailsRow(
+    label: String,
+    value: String,
+    maxLines: Int = Int.MAX_VALUE,
+) {
+    Column(modifier = Modifier.padding(top = 8.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun DetailsLinkRow(
+    label: String? = null,
+    value: String,
+    onOpen: () -> Unit,
+) {
+    Column {
+        if (label != null) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = onOpen) {
+                Text("Open", style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetailsDivider() {
+    HorizontalDivider(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        thickness = 1.dp,
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+/** Opens [url] in the system browser, mirroring the "Web" action button. */
+private fun openUrl(context: Context, url: String) {
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+    } catch (_: ActivityNotFoundException) {
+        // No browser activity available — ignore
     }
 }
 

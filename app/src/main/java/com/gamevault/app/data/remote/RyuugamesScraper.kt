@@ -77,13 +77,15 @@ class RyuugamesScraper {
             val title = extractTitle(doc) ?: return ScrapeResult.Error("Could not extract title")
             val description = extractDescription(doc)
 
-            ScrapeResult.Success(
+ScrapeResult.Success(
                 game = Game(
                     title = title,
                     description = description,
                     developer = extractInfoValue(doc, "Developer"),
                     engine = extractEngine(listOfNotNull(title, description).joinToString("\n")),
                     version = extractVersion(description),
+                    changelog = extractChangelog(description),
+                    devLinks = emptyList(),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -254,6 +256,20 @@ class RyuugamesScraper {
                 text.contains("SugarCube", ignoreCase = true) -> GameEngine.TWINE
             else -> GameEngine.OTHER
         }
+    }
+
+    /**
+     * Best effort changelog: text after a "Changelog" marker in the post
+     * body, up to 600 chars. Null when absent.
+     */
+    private fun extractChangelog(description: String?): String? {
+        val text = description ?: return null
+        val marker = Regex("""(?i)\b(?:changelog|change\s*log)\b""")
+        val match = marker.find(text) ?: return null
+        return text.substring(match.range.last + 1)
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?.take(600)
     }
 
     private fun extractVersion(description: String?): String? {

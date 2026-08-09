@@ -81,6 +81,8 @@ class FapForFunScraper {
                     developer = extractDeveloper(doc),
                     engine = extractEngine(description),
                     version = null,
+                    changelog = null,
+                    devLinks = emptyList(),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,

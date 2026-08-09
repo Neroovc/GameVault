@@ -23,6 +23,8 @@ data class Game(
     val f95Url: String? = null,
     val sourceType: SourceType = SourceType.MANUAL,
     val sourceUrl: String? = null,
+    val changelog: String? = null,
+    val devLinks: List<String> = emptyList(),
     val routes: List<GameRoute> = emptyList(),
     val tags: List<Tag> = emptyList(),
     val collections: List<Collection> = emptyList(),

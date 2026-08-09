@@ -18,6 +18,7 @@ import com.gamevault.app.data.local.entity.PlaySessionEntity
 import com.gamevault.app.data.local.entity.TagEntity
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.reflect.TypeToken
 import java.io.BufferedReader
 import java.io.InputStreamReader
 
@@ -51,6 +52,8 @@ data class BackupGame(
     val f95Url: String? = null,
     val sourceType: String = "MANUAL",
     val sourceUrl: String? = null,
+    val changelog: String? = null,
+    val devLinks: List<String> = emptyList(),
 )
 
 data class BackupCollection(
@@ -147,6 +150,10 @@ class GameVaultBackup(
                     f95Url = gwr.game.f95Url,
                     sourceType = gwr.game.sourceType,
                     sourceUrl = gwr.game.sourceUrl,
+                    changelog = gwr.game.changelog,
+                    devLinks = gwr.game.devLinks
+                        ?.let { parseDevLinks(it) }
+                        ?: emptyList(),
                 )
             },
             collections = allCollections.map { entity ->
@@ -238,6 +245,8 @@ class GameVaultBackup(
                         f95Url = bg.f95Url,
                         sourceType = bg.sourceType,
                         sourceUrl = bg.sourceUrl,
+                        changelog = bg.changelog,
+                        devLinks = bg.devLinks.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
                     )
                 )
                 newGameIds.add(id)
@@ -329,5 +338,12 @@ class GameVaultBackup(
         } catch (e: Exception) {
             ImportResult(false, "Import failed: ${e.message}", 0, 0)
         }
+    }
+
+    private fun parseDevLinks(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)
+        }.getOrElse { emptyList() }
     }
 }
