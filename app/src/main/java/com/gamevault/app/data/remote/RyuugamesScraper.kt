@@ -85,7 +85,7 @@ ScrapeResult.Success(
                     engine = extractEngine(listOfNotNull(title, description).joinToString("\n")),
                     version = extractVersion(description),
                     changelog = extractChangelog(description),
-                    devLinks = emptyList(),
+                    devLinks = extractDevLinks(doc),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -96,6 +96,8 @@ ScrapeResult.Success(
                 ),
                 threadId = null,
             )
+        } catch (e: ScrapeBlockedException) {
+            ScrapeResult.Error(e.message ?: "Ryuugames blocked the request")
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
             ScrapeResult.Error("Failed to scrape: $msg")
@@ -159,7 +161,7 @@ ScrapeResult.Success(
         val doc = response.parse()
         if (response.statusCode() == 403 || response.statusCode() == 429 || isCloudflareChallenge(doc)) {
             throw ScrapeBlockedException(
-                "Ryuugames blocked the request (Cloudflare). Open the site in a browser and try again.",
+                "Ryuugames blocked the request (Cloudflare challenge). Try again later or open the game page in your browser.",
             )
         }
         return doc
@@ -169,16 +171,22 @@ ScrapeResult.Success(
         val text = doc.title() + " " + doc.body().text()
         return text.contains("cloudflare", ignoreCase = true) ||
             text.contains("just a moment", ignoreCase = true) ||
+            text.contains("attention required", ignoreCase = true) ||
+            text.contains("cf-challenge", ignoreCase = true) ||
             text.contains("captcha", ignoreCase = true) ||
             text.contains("access denied", ignoreCase = true)
     }
 
     private suspend fun fetchDocument(url: String): Document {
-        return Jsoup.connect(url)
+        // Same Cloudflare detection as the search path: a challenged detail
+        // page would otherwise be scraped as a title of "Just a moment".
+        val response = Jsoup.connect(url)
             .userAgent(USER_AGENT)
             .timeout(TIMEOUT_MS.toInt())
             .followRedirects(true)
-            .get()
+            .ignoreHttpErrors(true)
+            .execute()
+        return checkNotBlocked(response)
     }
 
     private fun parseCards(doc: Document): List<SearchResult> {
@@ -321,6 +329,25 @@ ScrapeResult.Success(
             .distinct()
             .take(MAX_TAGS)
         return tagNames.map { Tag(name = it) }
+    }
+
+    /**
+     * External links from the post body (dev site, Patreon, Discord, ...).
+     * Absolute http(s) links only; same-site links and the download buttons
+     * (ryuu-sl-vip-btn) are filtered out. Max 4, deduplicated.
+     */
+    private fun extractDevLinks(doc: Document): List<String> {
+        val content = doc.selectFirst(".td-post-content") ?: return emptyList()
+        return content.select("a[href]")
+            .filterNot { it.hasClass("ryuu-sl-vip-btn") }
+            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+            .filter { href ->
+                val lower = href.lowercase()
+                (lower.startsWith("https://") || lower.startsWith("http://")) &&
+                    !lower.contains("ryuugames.com")
+            }
+            .distinct()
+            .take(4)
     }
 
     /**

@@ -82,7 +82,7 @@ class FapForFunScraper {
                     engine = extractEngine(description),
                     version = null,
                     changelog = null,
-                    devLinks = emptyList(),
+                    devLinks = extractDevLinks(doc),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -183,6 +183,27 @@ class FapForFunScraper {
         return content.select("a[href*=\"ouo.io\"], a[href*=\"exe.io\"]")
             .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
             .distinct()
+    }
+
+    /**
+     * External links from the post body (dev site, Patreon, Discord, ...).
+     * Absolute http(s) links only; same-site links and download/paylink
+     * patterns (magnets, ouo.io / exe.io shorteners) are filtered out.
+     * Max 4, deduplicated.
+     */
+    private fun extractDevLinks(doc: Document): List<String> {
+        val content = doc.selectFirst(".entry-content") ?: return emptyList()
+        return content.select("a[href]")
+            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+            .filter { href ->
+                val lower = href.lowercase()
+                (lower.startsWith("https://") || lower.startsWith("http://")) &&
+                    !lower.contains("fapforfun.net") &&
+                    !lower.contains("ouo.io") &&
+                    !lower.contains("exe.io")
+            }
+            .distinct()
+            .take(4)
     }
 
     private fun extractDeveloper(doc: Document): String? {

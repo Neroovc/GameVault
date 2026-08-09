@@ -33,22 +33,31 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.PlayArrow
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Paid
 import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
@@ -1217,7 +1226,7 @@ private fun GenresRow(tags: List<com.gamevault.app.domain.model.Tag>) {
 
 /**
  * Key/value metadata card shown below the description and genres: developer,
- * engine, version, changelog, the game page link and developer links.
+ * engine, version, changelog and developer links.
  * Rows are omitted entirely when the value is missing.
  */
 @Composable
@@ -1225,7 +1234,6 @@ private fun DetailsSection(
     game: com.gamevault.app.domain.model.Game,
 ) {
     val context = LocalContext.current
-    val gamePageUrl = game.f95Url ?: game.sourceUrl
     val devLinks = game.devLinks.take(4)
 
     Card(
@@ -1238,24 +1246,20 @@ private fun DetailsSection(
             Text("Details", style = MaterialTheme.typography.titleSmall)
 
             if (!game.developer.isNullOrBlank()) {
-                DetailsRow(label = "Developer", value = game.developer)
+                DetailsRow(icon = Icons.Filled.Person, label = "Developer", value = game.developer)
             }
             if (game.engine != null) {
-                DetailsRow(label = "Engine", value = game.engine.displayName)
+                DetailsRow(icon = Icons.Filled.Build, label = "Engine", value = game.engine.displayName)
             }
             if (!game.version.isNullOrBlank()) {
-                DetailsRow(label = "Version", value = game.version)
+                DetailsRow(icon = Icons.Filled.Flag, label = "Version", value = game.version)
             }
             if (!game.changelog.isNullOrBlank()) {
-                DetailsRow(label = "Changelog", value = game.changelog, maxLines = 4)
-            }
-
-            if (gamePageUrl != null) {
-                DetailsDivider()
-                DetailsLinkRow(
-                    label = "Game page",
-                    value = gamePageUrl,
-                    onOpen = { openUrl(context, gamePageUrl) },
+                DetailsRow(
+                    icon = Icons.Filled.History,
+                    label = "Changelog",
+                    value = game.changelog,
+                    maxLines = 4,
                 )
             }
 
@@ -1270,7 +1274,10 @@ private fun DetailsSection(
                     Spacer(modifier = Modifier.height(4.dp))
                     devLinks.forEachIndexed { index, link ->
                         if (index > 0) DetailsDivider()
+                        val (icon, label) = devLinkPlatform(link)
                         DetailsLinkRow(
+                            icon = icon,
+                            label = label,
                             value = link,
                             onOpen = { openUrl(context, link) },
                         )
@@ -1281,55 +1288,111 @@ private fun DetailsSection(
     }
 }
 
+/**
+ * Maps a developer URL to a platform icon + label, e.g.
+ * "https://t.me/xxx" -> (Send, "Telegram"). Unknown hosts fall back to a
+ * Link icon with the bare host as the label.
+ */
+private fun devLinkPlatform(url: String): Pair<ImageVector, String> {
+    val lower = url.lowercase()
+    return when {
+        "telegram" in lower || "t.me" in lower ->
+            Icons.AutoMirrored.Filled.Send to "Telegram"
+        "discord" in lower ->
+            Icons.Filled.Forum to "Discord"
+        "youtube" in lower || "youtu.be" in lower ->
+            Icons.AutoMirrored.Filled.PlayArrow to "YouTube"
+        "patreon" in lower ->
+            Icons.Filled.Paid to "Patreon"
+        "x.com" in lower || "twitter" in lower ->
+            Icons.Filled.Star to "X"
+        "reddit" in lower ->
+            Icons.Filled.Forum to "Reddit"
+        "steam" in lower || "steampowered" in lower ->
+            Icons.Filled.SportsEsports to "Steam"
+        else ->
+            Icons.Filled.Link to devLinkHostLabel(lower)
+    }
+}
+
+private fun devLinkHostLabel(url: String): String {
+    val host = url.trim()
+        .removePrefix("https://").removePrefix("http://")
+        .removePrefix("www.")
+        .substringBefore('/')
+    return host.takeIf { it.isNotBlank() } ?: "Website"
+}
+
 @Composable
 private fun DetailsRow(
+    icon: ImageVector,
     label: String,
     value: String,
     maxLines: Int = Int.MAX_VALUE,
 ) {
-    Column(modifier = Modifier.padding(top = 8.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = maxLines,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun DetailsLinkRow(
-    label: String? = null,
-    value: String,
-    onOpen: () -> Unit,
-) {
-    Column {
-        if (label != null) {
+        Spacer(modifier = Modifier.width(10.dp))
+        Column {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = maxLines,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
+    }
+}
+
+@Composable
+private fun DetailsLinkRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    onOpen: () -> Unit,
+) {
+    Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                modifier = Modifier.size(20.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             TextButton(onClick = onOpen) {
                 Text("Open", style = MaterialTheme.typography.labelMedium)
             }
