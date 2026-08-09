@@ -596,6 +596,7 @@ private fun GameHeader(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 private fun RatingBar(
     rating: Float,
     onRatingChange: (Float) -> Unit,
