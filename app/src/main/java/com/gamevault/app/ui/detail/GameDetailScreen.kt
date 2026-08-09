@@ -33,7 +33,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.PlayArrow
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -1301,7 +1300,7 @@ private fun devLinkPlatform(url: String): Pair<ImageVector, String> {
         "discord" in lower ->
             Icons.Filled.Forum to "Discord"
         "youtube" in lower || "youtu.be" in lower ->
-            Icons.AutoMirrored.Filled.PlayArrow to "YouTube"
+            Icons.Filled.PlayArrow to "YouTube"
         "patreon" in lower ->
             Icons.Filled.Paid to "Patreon"
         "x.com" in lower || "twitter" in lower ->
