@@ -335,18 +335,45 @@ class F95ZoneScraper {
 
     /** Scans the first post body for a "Developer/Created by/Made by" mention. */
     private fun extractDeveloperFromBody(doc: Document): String? {
-        val body = doc.selectFirst("article.message-body .bbWrapper")?.text() ?: return null
-        val match = Regex(
-            """(?i)(developer|created by|made by)\s*:?\s*([A-Za-z0-9][A-Za-z0-9 ._'-]{2,60})""",
-        ).find(body) ?: return null
-        val candidate = match.groupValues[2].trim()
-        return candidate.takeIf { it.lowercase() !in genericDeveloperWords }
+        val body = doc.selectFirst("article.message-body .bbWrapper") ?: return null
+        val lines = flattenHtmlToLines(body.html())
+        val label = Regex("""(?i)^(?:developers?|developer\(s\)|created by|made by|studio)\s*:""")
+        val idx = lines.indexOfFirst { label.containsMatchIn(it) }
+        if (idx < 0) return null
+        val value = lines[idx].substringAfter(':', "").trim()
+        val cleaned = cleanDeveloperValue(value)
+        return cleaned?.takeIf { it.lowercase() !in genericDeveloperWords }
     }
 
-    /** Reads a "Label: value" pair from the thread's info table (dl.pairsJustified). */
+    /** Keeps only the actual creator name, stripping F95Zone link placeholders,
+     *  URLs and platform tokens (Ci-en, Steam, Patreon, ...). */
+    private fun cleanDeveloperValue(raw: String): String? {
+        var v = raw
+            .replace(Regex("""(?i)you must be registered to see the links?"""), " ")
+            .replace(Regex("""https?://\S+"""), " ")
+            .replace("\u200b", "")
+            .replace(Regex("""\s+"""), " ")
+            .trim()
+            .substringBefore(" - ")
+            .trim()
+        v = v.split(' ')
+            .filter { it.lowercase().trim() !in platformTokens }
+            .joinToString(" ")
+            .trim()
+        if (v.isBlank() || v.length > 64) return null
+        return v
+    }
+
+    private val platformTokens = setOf(
+        "ci-en", "steam", "patreon", "itch", "itch.io", "boosty", "subscribestar",
+        "discord", "twitter", "youtube", "ko-fi", "kofi",
+        "gumroad", "f95zone", "f95",
+    )
+
+    /** Reads a "Label: value" pair from the thread's info table (dl.pairs--justified). */
     private fun extractInfoValue(doc: Document, vararg labels: String): String? {
         val wanted = labels.map { it.lowercase() }
-        for (row in doc.select("dl.pairsJustified")) {
+        for (row in doc.select("dl.pairs--justified, dl.pairsJustified")) {
             val label = row.selectFirst("dt")?.text()?.trim()?.lowercase() ?: continue
             if (label in wanted) {
                 val value = row.selectFirst("dd")?.text()?.trim()
@@ -358,7 +385,10 @@ class F95ZoneScraper {
 
     /**
      * Extracts the changelog section from the first post body (markers:
-     * "Changelog" / "Change Log"), up to 600 chars. Null when absent.
+     * "Changelog" / "Change Log"), up to 600 chars. Null when absent — or
+     * when the changelog lives inside a guest-blocked spoiler (F95Zone
+     * renders "You don't have permission to view the spoiler content" to
+     * visitors, which is not a changelog).
      */
     private fun extractChangelog(doc: Document): String? {
         val body = doc.selectFirst("article.message-body .bbWrapper") ?: return null
@@ -377,10 +407,32 @@ class F95ZoneScraper {
         for (i in idx + 1 until lines.size) {
             val line = lines[i].trim()
             if (line.isEmpty()) continue
+            if (isSpoilerNoise(line)) continue
+            // Spoiler content is hidden from guests: the site renders a
+            // permission notice instead of the real changelog. If the
+            // notice shows up before any real content, the whole changelog
+            // is blocked -> null. A notice later on belongs to an unrelated
+            // spoiler (downloads, notes, ...) -> stop collecting there.
+            if (isGuestBlockedSpoiler(line)) {
+                return if (out.isBlank()) null else out.toString().trim().take(600)
+            }
             out.append(line).append('\n')
             if (out.length >= 600) break
         }
         return out.toString().trim().takeIf { it.isNotBlank() }?.take(600)
+    }
+
+    /** True when [line] is the spoiler box title ("Spoiler" / "Spoiler: X"). */
+    private fun isSpoilerNoise(line: String): Boolean {
+        return line.equals("spoiler", ignoreCase = true) ||
+            line.startsWith("spoiler:", ignoreCase = true)
+    }
+
+    /** True when [line] is the permission notice F95Zone shows for hidden spoilers. */
+    private fun isGuestBlockedSpoiler(line: String): Boolean {
+        return line.contains("don't have permission", ignoreCase = true) ||
+            line.contains("do not have permission", ignoreCase = true) ||
+            line.contains("log in or register", ignoreCase = true)
     }
 
     /**
