@@ -111,9 +111,11 @@ class CloudflareCookieHelper(
                     handler.postDelayed(timeoutRunnable, timeoutMs)
 
                     // Polls CookieManager for the clearance cookie once the
-                    // challenge page has finished loading. Self-referencing
-                    // local keeps the re-schedule type non-null.
-                    val poll = Runnable {
+                    // challenge page has finished loading. The !! is safe:
+                    // pollRunnable is fully assigned before any callback can
+                    // run (the Runnable only executes via postDelayed or
+                    // onPageFinished, both of which happen after assignment).
+                    pollRunnable = Runnable {
                         if (settled) return@Runnable
                         val cookie = runCatching {
                             cookieManager.getCookie(cookieUrl)
@@ -122,14 +124,13 @@ class CloudflareCookieHelper(
                         if (cfValue != null) {
                             finish(CfCookie(cfValue, settings.userAgentString))
                         } else {
-                            handler.postDelayed(poll, POLL_INTERVAL_MS)
+                            handler.postDelayed(pollRunnable!!, POLL_INTERVAL_MS)
                         }
                     }
-                    pollRunnable = poll
 
                     wv.webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String?) {
-                            handler.postDelayed(poll, POLL_INTERVAL_MS)
+                            handler.postDelayed(pollRunnable!!, POLL_INTERVAL_MS)
                         }
                     }
 
