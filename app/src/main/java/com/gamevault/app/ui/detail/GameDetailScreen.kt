@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.History
@@ -486,11 +487,20 @@ private fun GameHeader(
             )
 
             if (game.developer != null) {
-                Text(
-                    text = game.developer,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Filled.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = game.developer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             // Status + source meta row (source skipped for MANUAL in saved mode)
@@ -1234,6 +1244,7 @@ private fun DetailsSection(
 ) {
     val context = LocalContext.current
     val devLinks = game.devLinks.take(4)
+    val downloadLinks = game.downloadLinks.take(4)
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1260,6 +1271,27 @@ private fun DetailsSection(
                     value = game.changelog,
                     maxLines = 4,
                 )
+            }
+
+            if (downloadLinks.isNotEmpty()) {
+                DetailsDivider()
+                Column(modifier = Modifier.padding(top = 8.dp)) {
+                    Text(
+                        text = "Download links",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    downloadLinks.forEachIndexed { index, link ->
+                        if (index > 0) DetailsDivider()
+                        DetailsLinkRow(
+                            icon = Icons.Filled.FileDownload,
+                            label = downloadLinkPlatformLabel(link),
+                            value = link,
+                            onOpen = { openUrl(context, link) },
+                        )
+                    }
+                }
             }
 
             if (devLinks.isNotEmpty()) {
@@ -1320,6 +1352,26 @@ private fun devLinkHostLabel(url: String): String {
         .removePrefix("www.")
         .substringBefore('/')
     return host.takeIf { it.isNotBlank() } ?: "Website"
+}
+
+/**
+ * Maps a download URL to a short platform label, e.g.
+ * "https://www.mediafire.com/folder/..." -> "MediaFire". Magnet links are
+ * labeled "Magnet"; unknown hosts fall back to [devLinkHostLabel].
+ */
+private fun downloadLinkPlatformLabel(url: String): String {
+    val lower = url.trim().lowercase()
+    return when {
+        lower.startsWith("magnet:") -> "Magnet"
+        "mega.nz" in lower || "mega.co.nz" in lower -> "Mega"
+        "mediafire" in lower -> "MediaFire"
+        "pixeldrain" in lower -> "PixelDrain"
+        "gofile" in lower -> "GoFile"
+        "1fichier" in lower -> "1Fichier"
+        "dropbox" in lower -> "Dropbox"
+        "drive.google" in lower -> "Google Drive"
+        else -> devLinkHostLabel(lower)
+    }
 }
 
 @Composable

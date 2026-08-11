@@ -93,6 +93,7 @@ class AppSettings(private val context: Context) {
         val DEFAULT_COLLECTION_ID = longPreferencesKey("default_collection_id")
         val DISABLED_SOURCE_IDS = stringSetPreferencesKey("disabled_source_ids")
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
+        val RYUUGAMES_CF_COOKIE = stringPreferencesKey("ryuugames_cf_cookie")
         val SOURCE_REQUEST_PACE = intPreferencesKey("source_request_pace")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
     }
@@ -268,6 +269,22 @@ class AppSettings(private val context: Context) {
                 prefs.remove(Keys.F95ZONE_COOKIE)
             } else {
                 prefs[Keys.F95ZONE_COOKIE] = cookie
+            }
+        }
+    }
+
+    /** Observe the saved RyuuGames Cloudflare clearance cookie. null = no cookie saved. */
+    val ryuugamesCfCookie: Flow<String?> = context.dataStore.data.map { prefs ->
+        prefs[Keys.RYUUGAMES_CF_COOKIE]
+    }
+
+    /** Persist (or clear with null) the RyuuGames Cloudflare clearance cookie. */
+    suspend fun setRyuugamesCfCookie(cookie: String?) {
+        context.dataStore.edit { prefs ->
+            if (cookie == null) {
+                prefs.remove(Keys.RYUUGAMES_CF_COOKIE)
+            } else {
+                prefs[Keys.RYUUGAMES_CF_COOKIE] = cookie
             }
         }
     }

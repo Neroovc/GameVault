@@ -10,6 +10,7 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.parser.Parser
+import java.net.URI
 import java.net.URLEncoder
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicLong
@@ -29,6 +30,14 @@ class F95ZoneScraper {
             "(KHTML, like Gecko) Chrome/125.0.6422.165 Mobile Safari/537.36"
         private const val TIMEOUT_MS = 30_000L
         private const val MAX_TAGS = 12
+
+        // Known creator/official platforms for strict dev-link extraction.
+        private val DEV_HOST_FRAGMENTS = listOf(
+            "patreon", "discord", "telegram", "t.me", "youtube", "youtu.be",
+            "x.com", "twitter", "reddit", "steam", "steampowered", "itch.io",
+            "gog.com", "play.google.com", "github", "ko-fi", "buymeacoffee",
+            "subscribestar",
+        )
 
         // Brave throttling: searches spaced >= 2s apart, shared across all
         // instances so nothing ever bursts the search endpoint. Tunable at
@@ -76,6 +85,7 @@ class F95ZoneScraper {
                     version = extractVersion(doc),
                     changelog = extractChangelog(doc),
                     devLinks = extractDevLinks(doc),
+                    downloadLinks = extractDownloadLinks(doc),
                     coverUrl = extractCoverUrl(doc),
                     f95Url = url,
                     f95Rating = extractRating(doc),
@@ -161,6 +171,50 @@ class F95ZoneScraper {
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
             throw ScrapeBlockedException("Search failed: $msg. Try again in a minute.")
+        }
+    }
+
+    /**
+     * Fetch the latest threads from F95Zone's "What's new" page.
+     *
+     * Uses the same f95zone.to page-fetch path as [scrapeGame] (shared
+     * concurrency limit and applyPace-tunable interval). A login/Cloudflare
+     * challenge or HTTP block throws [ScrapeBlockedException] instead of
+     * returning an empty list. Returns up to 12 results.
+     */
+    suspend fun fetchRecent(): List<SearchResult> {
+        return try {
+            val doc = fetchDocument("https://f95zone.to/whats-new/", null)
+            val results = doc.select(".structItem--thread").mapNotNull { row ->
+                val link = row.selectFirst("a.structItem-title") ?: return@mapNotNull null
+                val href = link.attr("href")
+                if (href.isBlank()) return@mapNotNull null
+                SearchResult(
+                    title = link.text().trim().ifEmpty { "Unknown" },
+                    url = normalizeUrl(href),
+                    snippet = row.selectFirst(".structItem-main")?.text()?.take(120),
+                )
+            }
+            // A challenge shell carries no thread rows — surface it as a block.
+            if (results.isEmpty() && isSearchBlocked(doc)) {
+                throw ScrapeBlockedException(
+                    "F95Zone blocked the recent list (login or challenge). Try again later.",
+                )
+            }
+            results.take(12)
+        } catch (e: ScrapeBlockedException) {
+            throw e
+        } catch (e: HttpStatusException) {
+            throw ScrapeBlockedException(
+                if (e.statusCode == 403 || e.statusCode == 429) {
+                    "F95Zone blocked the recent list (login or challenge). Try again later."
+                } else {
+                    "F95Zone returned HTTP ${e.statusCode} for the recent list. Try again later."
+                },
+            )
+        } catch (e: Exception) {
+            val msg = e.message ?: e.javaClass.simpleName
+            throw ScrapeBlockedException("Failed to fetch F95Zone recent list: $msg. Try again later.")
         }
     }
 
@@ -264,11 +318,29 @@ class F95ZoneScraper {
     }
 
     private fun extractDeveloper(doc: Document): String? {
-        // Prefer the real developer from the post's info table — F95Zone
-        // lists it under "Developers:" (sometimes "Studio:"). Fall back to
-        // the OP author when no label row is present.
-        return extractInfoValue(doc, "Developers", "Developer", "Studio")
+        // 1) Prefer the real developer from the post's info table — F95Zone
+        //    lists it under "Developers:" (sometimes "Studio:", "Created by").
+        // 2) Fall back to scanning the first post body for a developer
+        //    mention. 3) Last resort: the thread poster (article[data-author])
+        //    — on F95Zone that is usually the re-publisher, not the creator.
+        return extractInfoValue(
+            doc,
+            "Developers", "Developer", "Studio", "Created by", "Made by", "Developer(s)",
+        )
+            ?: extractDeveloperFromBody(doc)
             ?: doc.selectFirst("article[data-author]")?.attr("data-author")
+    }
+
+    private val genericDeveloperWords = setOf("unknown", "anonymous", "various", "n/a")
+
+    /** Scans the first post body for a "Developer/Created by/Made by" mention. */
+    private fun extractDeveloperFromBody(doc: Document): String? {
+        val body = doc.selectFirst("article.message-body .bbWrapper")?.text() ?: return null
+        val match = Regex(
+            """(?i)(developer|created by|made by)\s*:?\s*([A-Za-z0-9][A-Za-z0-9 ._'-]{2,60})""",
+        ).find(body) ?: return null
+        val candidate = match.groupValues[2].trim()
+        return candidate.takeIf { it.lowercase() !in genericDeveloperWords }
     }
 
     /** Reads a "Label: value" pair from the thread's info table (dl.pairsJustified). */
@@ -312,9 +384,10 @@ class F95ZoneScraper {
     }
 
     /**
-     * External links from the first post (dev site, Patreon, Discord, ...).
-     * Forum-internal links (f95zone.to / f95zone.com / relative paths) are
-     * filtered out. Max 4, deduplicated.
+     * Creator/official links from the first post (dev site, Patreon, Discord,
+     * ...). STRICT: only absolute http(s) links whose host contains a known
+     * creator/platform fragment. Download hosts are excluded — they belong to
+     * [extractDownloadLinks]. Max 4, deduplicated.
      */
     private fun extractDevLinks(doc: Document): List<String> {
         val body = doc.selectFirst("article.message-body .bbWrapper")
@@ -322,13 +395,41 @@ class F95ZoneScraper {
         return body.select("a[href]")
             .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
             .filter { href ->
-                !href.contains("f95zone.to", ignoreCase = true) &&
-                    !href.contains("f95zone.com", ignoreCase = true) &&
-                    !href.startsWith("/") &&
-                    !href.startsWith("#")
+                val lower = href.lowercase()
+                (lower.startsWith("https://") || lower.startsWith("http://")) &&
+                    DEV_HOST_FRAGMENTS.any { lower.contains(it) } &&
+                    !isDownloadHost(href)
             }
             .distinct()
             .take(4)
+    }
+
+    /**
+     * Download links from the first post body — known file hosts plus magnet
+     * links. Raw URLs only (no shortener expansion — the user opens them in a
+     * browser). Max 4, deduplicated.
+     */
+    private fun extractDownloadLinks(doc: Document): List<String> {
+        val body = doc.selectFirst("article.message-body .bbWrapper")
+            ?: return emptyList()
+        return body.select("a[href]")
+            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+            .filter { href ->
+                href.startsWith("magnet:", ignoreCase = true) || isDownloadHost(href)
+            }
+            .distinct()
+            .take(4)
+    }
+
+    /** True when [url] points at a known file host or download page. */
+    private fun isDownloadHost(url: String): Boolean {
+        val host = runCatching { URI(url).host }.getOrNull() ?: return false
+        val lower = host.lowercase()
+        return listOf(
+            "mega.nz", "mediafire.com", "mfcdn.io", "pixeldrain.com", "1fichier.com",
+            "gofile.io", "dropbox.com", "drive.google.com", "dl.free.fr",
+        ).any { lower.contains(it) } ||
+            (lower.contains("moddb.com") && url.contains("/download", ignoreCase = true))
     }
 
     /** Converts body HTML to text with one element per line. */

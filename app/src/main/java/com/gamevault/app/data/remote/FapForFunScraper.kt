@@ -83,6 +83,7 @@ class FapForFunScraper {
                     version = null,
                     changelog = null,
                     devLinks = extractDevLinks(doc),
+                    downloadLinks = extractDownloadLinks(doc),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -108,6 +109,55 @@ class FapForFunScraper {
             extractCoverUrl(fetchDocument(url), url)
         } catch (e: Exception) {
             null
+        }
+    }
+
+    /**
+     * Fetch the latest posts from the FapForFun home page.
+     *
+     * Non-2xx answers surface as [ScrapeBlockedException]. Reuses the proven
+     * search-card selectors, with a TDMag-style (.td_module) fallback in case
+     * the home template differs from search results. Returns up to 12 results.
+     */
+    suspend fun fetchRecent(): List<SearchResult> {
+        return try {
+            val response = Jsoup.connect(BASE_URL)
+                .userAgent(USER_AGENT)
+                .timeout(TIMEOUT_MS.toInt())
+                .followRedirects(true)
+                .ignoreHttpErrors(true)
+                .execute()
+            val status = response.statusCode()
+            if (status !in 200..299) {
+                throw ScrapeBlockedException(
+                    "FapForFun blocked the recent list (HTTP $status). Try again later.",
+                )
+            }
+            parseRecentCards(response.parse()).take(12)
+        } catch (e: ScrapeBlockedException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = e.message ?: e.javaClass.simpleName
+            throw ScrapeBlockedException("Failed to fetch FapForFun recent list: $msg")
+        }
+    }
+
+    /**
+     * Recent-list cards: the proven search selectors first, then a
+     * best-effort TDMag-style fallback (.td_module rows).
+     */
+    private fun parseRecentCards(doc: Document): List<SearchResult> {
+        val cards = parseCards(doc)
+        if (cards.isNotEmpty()) return cards
+        return doc.select(".td_module").mapNotNull { card ->
+            val link = card.selectFirst(".td-module-title a") ?: return@mapNotNull null
+            val href = link.attr("href")
+            if (href.isBlank()) return@mapNotNull null
+            SearchResult(
+                title = link.text().trim().ifEmpty { "Unknown" },
+                url = normalizeUrl(href, BASE_URL),
+                thumbnailUrl = null,
+            )
         }
     }
 
@@ -161,34 +211,32 @@ class FapForFunScraper {
     }
 
     private fun extractDescription(doc: Document): String? {
-        val body = doc.selectFirst(".entry-content")?.text()?.trim()?.take(1000)
-        val downloads = extractDownloadLinks(doc)
-        val lines = buildList {
-            body?.takeIf { it.isNotBlank() }?.let(::add)
-            downloads.forEach { add("Download: $it") }
-            if (downloads.isNotEmpty()) add("Password: $SITE_PASSWORD")
-        }
-        return lines.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        return doc.selectFirst(".entry-content")?.text()?.trim()?.take(1000)
     }
 
+    /**
+     * Download links from the post body: magnet links, known file hosts, and
+     * (for newer posts) shortener URLs (ouo.io / exe.io) that 403 to plain
+     * clients — surfaced raw so the user can open them in a browser.
+     * Max 4, deduplicated.
+     */
     private fun extractDownloadLinks(doc: Document): List<String> {
         val content = doc.selectFirst(".entry-content") ?: return emptyList()
         val magnets = content.select("a[href^=\"magnet:\"]")
             .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
-            .distinct()
-        if (magnets.isNotEmpty()) return magnets
-
-        // Newer posts route downloads through shorteners that 403 to plain
-        // clients — surface the URL so the user can open it in a browser.
-        return content.select("a[href*=\"ouo.io\"], a[href*=\"exe.io\"]")
+        val fileHosts = content.select("a[href]")
             .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
-            .distinct()
+            .filter { isDownloadHost(it) }
+        val shorteners = content.select("a[href*=\"ouo.io\"], a[href*=\"exe.io\"]")
+            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+        return (magnets + fileHosts + shorteners).distinct().take(4)
     }
 
     /**
      * External links from the post body (dev site, Patreon, Discord, ...).
-     * Absolute http(s) links only; same-site links and download/paylink
-     * patterns (magnets, ouo.io / exe.io shorteners) are filtered out.
+     * Absolute http(s) links only; same-site links, download/paylink
+     * patterns (magnets, ouo.io / exe.io shorteners) and known download
+     * hosts (those go to [extractDownloadLinks]) are filtered out.
      * Max 4, deduplicated.
      */
     private fun extractDevLinks(doc: Document): List<String> {
@@ -200,10 +248,22 @@ class FapForFunScraper {
                 (lower.startsWith("https://") || lower.startsWith("http://")) &&
                     !lower.contains("fapforfun.net") &&
                     !lower.contains("ouo.io") &&
-                    !lower.contains("exe.io")
+                    !lower.contains("exe.io") &&
+                    !isDownloadHost(href)
             }
             .distinct()
             .take(4)
+    }
+
+    /** True when [url] points at a known file host or download page. */
+    private fun isDownloadHost(url: String): Boolean {
+        val host = runCatching { URI(url).host }.getOrNull() ?: return false
+        val lower = host.lowercase()
+        return listOf(
+            "mega.nz", "mediafire.com", "mfcdn.io", "pixeldrain.com", "1fichier.com",
+            "gofile.io", "dropbox.com", "drive.google.com", "dl.free.fr",
+        ).any { lower.contains(it) } ||
+            (lower.contains("moddb.com") && url.contains("/download", ignoreCase = true))
     }
 
     private fun extractDeveloper(doc: Document): String? {

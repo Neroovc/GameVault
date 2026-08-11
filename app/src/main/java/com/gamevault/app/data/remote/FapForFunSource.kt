@@ -53,4 +53,16 @@ class FapForFunSource(
     }
 
     override suspend fun fetchCover(url: String): String? = scraper.fetchCover(url)
+
+    override suspend fun fetchRecent(): SourceResult<List<SearchResult>> {
+        return try {
+            // The scraper already returns domain SearchResults directly.
+            SourceResult.Success(scraper.fetchRecent())
+        } catch (e: ScrapeBlockedException) {
+            SourceResult.Error(e.message ?: "Recent posts unavailable", e)
+        } catch (e: Exception) {
+            val msg = e.message ?: e.javaClass.simpleName
+            SourceResult.Error("Failed to fetch recent posts: $msg", e)
+        }
+    }
 }

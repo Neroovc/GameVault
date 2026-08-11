@@ -42,6 +42,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -156,6 +157,19 @@ fun SourceBrowseScreen(
     // Once F95Zone rate-limits the cover burst, stop firing more cover fetches
     // for this screen session so we do not keep hammering the site.
     var coverBlocked by rememberSaveable { mutableStateOf(false) }
+    // Recent posts for this source, fetched once per screen session (see the
+    // LaunchedEffect below). rememberSaveable so returning from a detail
+    // preview does not lose them and re-fire the external fetch.
+    var recentResults by rememberSaveable(stateSaver = searchResultsSaver) {
+        mutableStateOf<List<SearchResult>>(emptyList())
+    }
+    var recentError by rememberSaveable { mutableStateOf<String?>(null) }
+    var recentLoading by remember { mutableStateOf(false) }
+    // Which source the loaded recents belong to — lets retries re-fire while
+    // keeping already-loaded recents stable across navigation round-trips.
+    var recentLoadedForSource by rememberSaveable { mutableStateOf<String?>(null) }
+    // Bumped by the Retry button to re-trigger the fetch effect.
+    var recentRetryKey by remember { mutableStateOf(0) }
     var allCollections by remember { mutableStateOf(emptyList<Collection>()) }
     var defaultCollectionIds by remember { mutableStateOf(emptyList<Long>()) }
     // URLs already in the library (f95Url/sourceUrl union) — drives the
@@ -226,6 +240,25 @@ fun SourceBrowseScreen(
             is SourceResult.Error -> error = res.message
         }
         loading = false
+    }
+
+    // Fetch recent posts once per source. Keyed by source id so switching
+    // sources triggers a fetch, and by recentRetryKey so the Retry button can
+    // re-fire while already-loaded recents stay cached across recompositions
+    // and navigation (no refetch when just returning from a detail preview).
+    LaunchedEffect(source.id, recentRetryKey) {
+        if (recentLoadedForSource == source.id) return@LaunchedEffect
+        recentLoading = true
+        val res = withContext(Dispatchers.IO) { source.fetchRecent() }
+        recentLoading = false
+        when (res) {
+            is SourceResult.Success -> {
+                recentLoadedForSource = source.id
+                recentResults = res.data
+                recentError = null
+            }
+            is SourceResult.Error -> recentError = res.message
+        }
     }
 
     LaunchedEffect(snackbarMessage) {
@@ -304,15 +337,112 @@ fun SourceBrowseScreen(
                 }
 
                 submittedQuery.isBlank() -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = "Search ${source.name} to find games",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    when {
+                        recentLoading -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        }
+
+                        recentError != null -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = recentError ?: "",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.error,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(onClick = {
+                                        recentError = null
+                                        recentRetryKey++
+                                    }) {
+                                        Text("Retry")
+                                    }
+                                }
+                            }
+                        }
+
+                        recentResults.isEmpty() -> {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "Search ${source.name} to find games",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "No recent posts found",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        }
+
+                        else -> {
+                            // 2-column grid mirroring the search results grid.
+                            LazyVerticalGrid(
+                                columns = GridCells.Fixed(2),
+                                contentPadding = PaddingValues(12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                items(recentResults, key = { it.url }) { result ->
+                                    SearchResultCard(
+                                        result = result,
+                                        source = source,
+                                        coverCache = coverCache,
+                                        coverLimiter = coverLimiter,
+                                        blocked = coverBlocked,
+                                        onCoverBlocked = {
+                                            coverBlocked = true
+                                            snackbarMessage = "Rate limited by F95Zone. Cover loads paused."
+                                        },
+                                        loading = detailLoadingUrl == result.url,
+                                        isInLibrary = result.url in libraryUrls,
+                                        onClick = {
+                                            // One detail fetch at a time; give the card
+                                            // visible feedback while the thread loads.
+                                            if (detailLoadingUrl == null) {
+                                                detailLoadingUrl = result.url
+                                                scope.launch {
+                                                    val existing = gameRepository
+                                                        .getGameBySourceUrl(result.url)
+                                                    if (existing != null && existing.inLibrary) {
+                                                        detailLoadingUrl = null
+                                                        onNavigateToDetail(existing.id)
+                                                        return@launch
+                                                    }
+                                                    val detail = withContext(Dispatchers.IO) {
+                                                        source.fetchDetail(result.url)
+                                                    }
+                                                    detailLoadingUrl = null
+                                                    when (detail) {
+                                                        is SourceResult.Success ->
+                                                            detailGame = detail.data
+                                                        is SourceResult.Error ->
+                                                            snackbarMessage =
+                                                                "Failed to load: ${detail.message}"
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 

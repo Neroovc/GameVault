@@ -25,6 +25,7 @@ data class Game(
     val sourceUrl: String? = null,
     val changelog: String? = null,
     val devLinks: List<String> = emptyList(),
+    val downloadLinks: List<String> = emptyList(),
     val routes: List<GameRoute> = emptyList(),
     val tags: List<Tag> = emptyList(),
     val collections: List<Collection> = emptyList(),

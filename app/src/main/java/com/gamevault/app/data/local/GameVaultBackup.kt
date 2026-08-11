@@ -54,6 +54,7 @@ data class BackupGame(
     val sourceUrl: String? = null,
     val changelog: String? = null,
     val devLinks: List<String> = emptyList(),
+    val downloadLinks: List<String> = emptyList(),
 )
 
 data class BackupCollection(
@@ -154,6 +155,9 @@ class GameVaultBackup(
                     devLinks = gwr.game.devLinks
                         ?.let { parseDevLinks(it) }
                         ?: emptyList(),
+                    downloadLinks = gwr.game.downloadLinks
+                        ?.let { parseDownloadLinks(it) }
+                        ?: emptyList(),
                 )
             },
             collections = allCollections.map { entity ->
@@ -246,7 +250,8 @@ class GameVaultBackup(
                         sourceType = bg.sourceType,
                         sourceUrl = bg.sourceUrl,
                         changelog = bg.changelog,
-                        devLinks = bg.devLinks.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
+                        devLinks = bg.devLinks.orEmpty().takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
+                        downloadLinks = bg.downloadLinks.orEmpty().takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
                     )
                 )
                 newGameIds.add(id)
@@ -341,6 +346,13 @@ class GameVaultBackup(
     }
 
     private fun parseDevLinks(raw: String?): List<String> {
+        if (raw.isNullOrBlank()) return emptyList()
+        return runCatching {
+            gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)
+        }.getOrElse { emptyList() }
+    }
+
+    private fun parseDownloadLinks(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)

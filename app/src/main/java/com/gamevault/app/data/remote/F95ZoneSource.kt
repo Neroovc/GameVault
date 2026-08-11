@@ -9,6 +9,7 @@ import com.gamevault.app.domain.source.SearchResult
 import com.gamevault.app.domain.source.SourceResult
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameStatus
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 
@@ -43,21 +44,39 @@ class F95ZoneSource(
 
     override suspend fun search(query: String): SourceResult<List<SearchResult>> {
         return try {
-            applyPace()
-            val cookie = appSettings.f95zoneCookie.first()
-            val results = scraper.search(query, cookie)
-            SourceResult.Success(results.map { sr ->
-                SearchResult(
-                    title = sr.title,
-                    url = sr.url,
-                    developer = sr.author,
-                )
-            })
+            SourceResult.Success(performSearchWithRetry(query))
         } catch (e: ScrapeBlockedException) {
             SourceResult.Error(e.message ?: "Search unavailable", e)
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
             SourceResult.Error("Search failed: $msg", e)
+        }
+    }
+
+    /**
+     * Runs one throttled search; when the first attempt is blocked (rate limit
+     * or bot challenge), waits briefly and tries exactly once more. Success on
+     * either attempt wins; a second block surfaces as the error.
+     */
+    private suspend fun performSearchWithRetry(query: String): List<SearchResult> {
+        return try {
+            performSearch(query)
+        } catch (e: ScrapeBlockedException) {
+            delay(5000)
+            performSearch(query)
+        }
+    }
+
+    private suspend fun performSearch(query: String): List<SearchResult> {
+        applyPace()
+        val cookie = appSettings.f95zoneCookie.first()
+        val results = scraper.search(query, cookie)
+        return results.map { sr ->
+            SearchResult(
+                title = sr.title,
+                url = sr.url,
+                developer = sr.author,
+            )
         }
     }
 
@@ -72,6 +91,24 @@ class F95ZoneSource(
             throw e
         } catch (e: Exception) {
             null
+        }
+    }
+
+    override suspend fun fetchRecent(): SourceResult<List<SearchResult>> {
+        return try {
+            applyPace()
+            SourceResult.Success(scraper.fetchRecent().map { sr ->
+                SearchResult(
+                    title = sr.title,
+                    url = sr.url,
+                    developer = sr.author,
+                )
+            })
+        } catch (e: ScrapeBlockedException) {
+            SourceResult.Error(e.message ?: "Recent posts unavailable", e)
+        } catch (e: Exception) {
+            val msg = e.message ?: e.javaClass.simpleName
+            SourceResult.Error("Failed to fetch recent posts: $msg", e)
         }
     }
 

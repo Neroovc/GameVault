@@ -54,4 +54,11 @@ interface GameSource {
      * provide thumbnails in [SearchResult.thumbnailUrl]) leave the default.
      */
     suspend fun fetchCover(url: String): String? = null
+
+    /**
+     * Fetch the latest/trending results from the source.
+     * Optional hook — sources without a recent feed leave the default.
+     */
+    suspend fun fetchRecent(): SourceResult<List<SearchResult>> =
+        SourceResult.Error("Recent posts are not available for this source.")
 }

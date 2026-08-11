@@ -73,9 +73,13 @@ data class GameEntity(
 
     @ColumnInfo(name = "dev_links")
     val devLinks: String? = null,        // JSON-serialized List<String>, null = none
+
+    @ColumnInfo(name = "download_links")
+    val downloadLinks: String? = null,   // JSON-serialized List<String>, null = none
 )
 
 private val devLinksJsonType = object : TypeToken<List<String>>() {}.type
+private val downloadLinksJsonType = object : TypeToken<List<String>>() {}.type
 
 private fun parseDevLinks(raw: String?): List<String> {
     if (raw.isNullOrBlank()) return emptyList()
@@ -84,7 +88,19 @@ private fun parseDevLinks(raw: String?): List<String> {
     }.getOrElse { emptyList() }
 }
 
+private fun parseDownloadLinks(raw: String?): List<String> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return runCatching {
+        Gson().fromJson<List<String>>(raw, downloadLinksJsonType)
+    }.getOrElse { emptyList() }
+}
+
 private fun serializeDevLinks(links: List<String>): String? {
+    if (links.isEmpty()) return null
+    return runCatching { Gson().toJson(links) }.getOrNull()
+}
+
+private fun serializeDownloadLinks(links: List<String>): String? {
     if (links.isEmpty()) return null
     return runCatching { Gson().toJson(links) }.getOrNull()
 }
@@ -111,6 +127,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     sourceUrl = sourceUrl,
     changelog = changelog,
     devLinks = parseDevLinks(devLinks),
+    downloadLinks = parseDownloadLinks(downloadLinks),
 )
 
 fun Game.toEntity(): GameEntity = GameEntity(
@@ -135,4 +152,5 @@ fun Game.toEntity(): GameEntity = GameEntity(
     sourceUrl = sourceUrl,
     changelog = changelog,
     devLinks = serializeDevLinks(devLinks),
+    downloadLinks = serializeDownloadLinks(downloadLinks),
 )

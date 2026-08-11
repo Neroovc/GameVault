@@ -1,5 +1,7 @@
 package com.gamevault.app.data.remote
 
+import android.content.Context
+import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameEngine
 import com.gamevault.app.domain.model.SourceType
@@ -30,8 +32,26 @@ import java.net.URLEncoder
  * Not required by the GameSource contract, but category pages like
  * https://www.ryuugames.com/category/visualnovel/english-translated/ work
  * with a plain GET if browse support is ever needed.
+ *
+ * Cloudflare clearance: when a fetch reports a challenge, the request is
+ * replayed with a `cf_clearance` cookie obtained from a hidden WebView (see
+ * [CloudflareCookieHelper]) using the WebView's own User-Agent — the cookie
+ * is bound to that UA. The cookie is cached for 15 minutes and persisted via
+ * [AppSettings]; the retry flow can never loop (one obtain per blocked fetch).
  */
-class RyuugamesScraper {
+class RyuugamesScraper(
+    private val appContext: Context,
+    private val appSettings: AppSettings,
+) {
+
+    private val cloudflareCookieHelper by lazy {
+        CloudflareCookieHelper(appContext, appSettings)
+    }
+
+    // In-memory cache of the last Cloudflare clearance cookie. The value is
+    // also persisted via AppSettings on every fresh obtain.
+    private var cachedCfCookie: CloudflareCookieHelper.CfCookie? = null
+    private var cookieFetchedAt: Long = 0
 
     companion object {
         // Realistic Android Chrome UA to avoid blocks
@@ -42,6 +62,7 @@ class RyuugamesScraper {
         private const val BASE_URL = "https://www.ryuugames.com"
         private const val MAX_PAGES = 5
         private const val MAX_TAGS = 12
+        private const val CF_COOKIE_TTL_MS = 15 * 60 * 1000L
     }
 
     /**
@@ -86,6 +107,7 @@ ScrapeResult.Success(
                     version = extractVersion(description),
                     changelog = extractChangelog(description),
                     devLinks = extractDevLinks(doc),
+                    downloadLinks = extractDownloadLinks(doc),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -117,6 +139,24 @@ ScrapeResult.Success(
         }
     }
 
+    /**
+     * Fetch the latest posts from the RyuuGames home page.
+     *
+     * Runs through the same Cloudflare check as search, so a challenged
+     * response surfaces as [ScrapeBlockedException]. Reuses the proven
+     * [parseCards] markup and returns up to 12 results.
+     */
+    suspend fun fetchRecent(): List<SearchResult> {
+        return try {
+            parseCards(fetchDocument(BASE_URL)).take(12)
+        } catch (e: ScrapeBlockedException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = e.message ?: e.javaClass.simpleName
+            throw ScrapeBlockedException("Failed to fetch Ryuugames recent list: $msg")
+        }
+    }
+
     // ── Private helpers ────────────────────────────────────
 
     private suspend fun fetchSearchPage(url: String, query: String): Document {
@@ -132,18 +172,31 @@ ScrapeResult.Success(
     }
 
     private suspend fun postSearchPage(url: String, query: String): Document {
+        return withCfRetry(url) { cookie, userAgent ->
+            postSearchPageRaw(url, query, cookie, userAgent)
+        }
+    }
+
+    private fun postSearchPageRaw(
+        url: String,
+        query: String,
+        cookie: String?,
+        userAgent: String?,
+    ): Document {
         // Search is only served over POST. Out-of-range /page/N/ returns 404
         // with a card-less age-gate shell, so 404 is benign (pagination
         // exhaustion); 403/429 and Cloudflare challenge shells are real blocks.
-        val response = Jsoup.connect(url)
-            .userAgent(USER_AGENT)
+        val conn = Jsoup.connect(url)
+            .userAgent(userAgent ?: USER_AGENT)
             .timeout(TIMEOUT_MS.toInt())
             .followRedirects(true)
             .ignoreHttpErrors(true)
             .method(Connection.Method.POST)
             .data("s", query)
-            .execute()
-        return checkNotBlocked(response)
+        if (cookie != null) {
+            conn.cookie("cf_clearance", cookie)
+        }
+        return checkNotBlocked(conn.execute())
     }
 
     private suspend fun getSearchPage(query: String): Document {
@@ -178,15 +231,68 @@ ScrapeResult.Success(
     }
 
     private suspend fun fetchDocument(url: String): Document {
+        return fetchDocumentWithCf(url)
+    }
+
+    /**
+     * Runs [docFetcher] without a cookie, then — ONLY when it reports a
+     * Cloudflare block — replays it with a clearance cookie: a fresh
+     * in-memory cache first, otherwise one hidden-WebView obtain. Arbitrary
+     * exceptions propagate untouched (no retry). At most one WebView obtain
+     * per blocked fetch, so the flow cannot loop.
+     */
+    private suspend fun withCfRetry(
+        url: String,
+        docFetcher: (cookie: String?, userAgent: String?) -> Document,
+    ): Document {
+        var originalBlock: ScrapeBlockedException
+        try {
+            return docFetcher(null, null)
+        } catch (e: ScrapeBlockedException) {
+            originalBlock = e
+        }
+
+        // Fresh cached cookie first — avoids the slow WebView path entirely.
+        val now = System.currentTimeMillis()
+        val cached = cachedCfCookie?.takeIf { now - cookieFetchedAt < CF_COOKIE_TTL_MS }
+        if (cached != null) {
+            try {
+                return docFetcher(cached.value, cached.userAgent)
+            } catch (e: ScrapeBlockedException) {
+                // Cached cookie went stale server-side — refresh it below.
+            }
+        }
+
+        // No cache, stale cache, or cached replay blocked: obtain exactly once.
+        val cf = cloudflareCookieHelper.obtainCookie(url)
+        if (cf == null) {
+            throw originalBlock
+        }
+        appSettings.setRyuugamesCfCookie(cf.value)
+        cachedCfCookie = cf
+        cookieFetchedAt = System.currentTimeMillis()
+        // May throw ScrapeBlockedException — propagates, no further retries.
+        return docFetcher(cf.value, cf.userAgent)
+    }
+
+    private suspend fun fetchDocumentWithCf(url: String): Document {
+        return withCfRetry(url) { cookie, userAgent ->
+            fetchDocumentRaw(url, cookie, userAgent)
+        }
+    }
+
+    private fun fetchDocumentRaw(url: String, cookie: String?, userAgent: String?): Document {
         // Same Cloudflare detection as the search path: a challenged detail
         // page would otherwise be scraped as a title of "Just a moment".
-        val response = Jsoup.connect(url)
-            .userAgent(USER_AGENT)
+        val conn = Jsoup.connect(url)
+            .userAgent(userAgent ?: USER_AGENT)
             .timeout(TIMEOUT_MS.toInt())
             .followRedirects(true)
             .ignoreHttpErrors(true)
-            .execute()
-        return checkNotBlocked(response)
+        if (cookie != null) {
+            conn.cookie("cf_clearance", cookie)
+        }
+        return checkNotBlocked(conn.execute())
     }
 
     private fun parseCards(doc: Document): List<SearchResult> {
@@ -231,17 +337,7 @@ ScrapeResult.Success(
     }
 
     private fun extractDescription(doc: Document): String? {
-        val body = doc.selectFirst(".td-post-content")?.text()?.trim()?.take(1000)
-        val downloads = doc.select("a.ryuu-sl-vip-btn[href]")
-            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
-            .distinct()
-        return when {
-            body.isNullOrBlank() && downloads.isEmpty() -> null
-            downloads.isEmpty() -> body
-            else -> listOfNotNull(body?.takeIf { it.isNotBlank() })
-                .plus(downloads.map { "Download: $it" })
-                .joinToString("\n")
-        }
+        return doc.selectFirst(".td-post-content")?.text()?.trim()?.take(1000)
     }
 
     private fun extractEngine(text: String?): GameEngine? {
@@ -332,9 +428,22 @@ ScrapeResult.Success(
     }
 
     /**
+     * Download links from the post body — the ryuu-sl-vip-btn download
+     * buttons. Max 4, deduplicated.
+     */
+    private fun extractDownloadLinks(doc: Document): List<String> {
+        val content = doc.selectFirst(".td-post-content") ?: return emptyList()
+        return content.select("a.ryuu-sl-vip-btn[href]")
+            .mapNotNull { it.attr("href").trim().takeIf { href -> href.isNotBlank() } }
+            .distinct()
+            .take(4)
+    }
+
+    /**
      * External links from the post body (dev site, Patreon, Discord, ...).
-     * Absolute http(s) links only; same-site links and the download buttons
-     * (ryuu-sl-vip-btn) are filtered out. Max 4, deduplicated.
+     * Absolute http(s) links only; same-site links, the download buttons
+     * (ryuu-sl-vip-btn) and known download hosts are filtered out (those go
+     * to [extractDownloadLinks]). Max 4, deduplicated.
      */
     private fun extractDevLinks(doc: Document): List<String> {
         val content = doc.selectFirst(".td-post-content") ?: return emptyList()
@@ -344,10 +453,22 @@ ScrapeResult.Success(
             .filter { href ->
                 val lower = href.lowercase()
                 (lower.startsWith("https://") || lower.startsWith("http://")) &&
-                    !lower.contains("ryuugames.com")
+                    !lower.contains("ryuugames.com") &&
+                    !isDownloadHost(href)
             }
             .distinct()
             .take(4)
+    }
+
+    /** True when [url] points at a known file host or download page. */
+    private fun isDownloadHost(url: String): Boolean {
+        val host = runCatching { URI(url).host }.getOrNull() ?: return false
+        val lower = host.lowercase()
+        return listOf(
+            "mega.nz", "mediafire.com", "mfcdn.io", "pixeldrain.com", "1fichier.com",
+            "gofile.io", "dropbox.com", "drive.google.com", "dl.free.fr",
+        ).any { lower.contains(it) } ||
+            (lower.contains("moddb.com") && url.contains("/download", ignoreCase = true))
     }
 
     /**

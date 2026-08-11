@@ -89,6 +89,9 @@ class ItchScraper {
                     version = null,
                     changelog = null,
                     devLinks = extractDevLinks(doc, url),
+                    // itch.io downloads require auth (own-page purchases) —
+                    // no structured download links are attempted.
+                    downloadLinks = emptyList(),
                     coverUrl = extractCoverUrl(doc, url),
                     f95Url = null,
                     f95Rating = null,
@@ -102,6 +105,31 @@ class ItchScraper {
         } catch (e: Exception) {
             val msg = e.message ?: e.javaClass.simpleName
             ScrapeResult.Error("Failed to scrape: $msg")
+        }
+    }
+
+    /**
+     * Fetch the newest games from itch.io's /games/newest page.
+     *
+     * Best-effort bonus source: any failure returns an empty list instead of
+     * crashing. Returns up to 12 results.
+     */
+    suspend fun fetchRecent(): List<SearchResult> {
+        return try {
+            val doc = fetchDocument("$BASE_URL/games/newest")
+            doc.select(".game_cell").mapNotNull { cell ->
+                val link = cell.selectFirst(".game_title a, a.title")
+                    ?: cell.selectFirst("a[href*=\".itch.io/\"]")
+                    ?: return@mapNotNull null
+                val href = link.attr("href")
+                if (href.isBlank()) return@mapNotNull null
+                SearchResult(
+                    title = link.text().trim().ifEmpty { "Unknown" },
+                    url = normalizeUrl(href, BASE_URL),
+                )
+            }.take(12)
+        } catch (e: Exception) {
+            emptyList()
         }
     }
 

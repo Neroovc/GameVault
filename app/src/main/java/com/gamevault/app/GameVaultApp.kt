@@ -8,6 +8,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.local.GameVaultDatabase
+import com.gamevault.app.data.remote.CloudflareCookieHelper
 import com.gamevault.app.data.remote.F95ZoneScraper
 import com.gamevault.app.data.remote.F95ZoneSource
 import com.gamevault.app.data.remote.FapForFunScraper
@@ -82,11 +83,15 @@ class AppContainer(private val app: GameVaultApp) {
     }
 
     val ryuugamesScraper: RyuugamesScraper by lazy {
-        RyuugamesScraper()
+        RyuugamesScraper(app, appSettings)
     }
 
     val ryuugamesSource: RyuugamesSource by lazy {
         RyuugamesSource(ryuugamesScraper)
+    }
+
+    val cloudflareCookieHelper: CloudflareCookieHelper by lazy {
+        CloudflareCookieHelper(app, appSettings)
     }
 
     val fapForFunScraper: FapForFunScraper by lazy {
