@@ -98,9 +98,9 @@ class CloudflareCookieHelper(
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
                     settings.mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-                    // Keep the device-default UA: it is what the challenge
-                    // sees, so it is what the Jsoup replay must send.
-                    settings.userAgentString = WebSettings.getDefaultUserAgentString(appContext)
+                    // Keep the device-default UA: the WebView's own default
+                    // is exactly what the challenge sees, so it is what the
+                    // Jsoup replay must send.
 
                     val cookieManager = CookieManager.getInstance()
                     cookieManager.setAcceptCookie(true)
@@ -111,8 +111,9 @@ class CloudflareCookieHelper(
                     handler.postDelayed(timeoutRunnable, timeoutMs)
 
                     // Polls CookieManager for the clearance cookie once the
-                    // challenge page has finished loading.
-                    pollRunnable = Runnable {
+                    // challenge page has finished loading. Self-referencing
+                    // local keeps the re-schedule type non-null.
+                    val poll = Runnable {
                         if (settled) return@Runnable
                         val cookie = runCatching {
                             cookieManager.getCookie(cookieUrl)
@@ -121,13 +122,14 @@ class CloudflareCookieHelper(
                         if (cfValue != null) {
                             finish(CfCookie(cfValue, settings.userAgentString))
                         } else {
-                            handler.postDelayed(pollRunnable, POLL_INTERVAL_MS)
+                            handler.postDelayed(poll, POLL_INTERVAL_MS)
                         }
                     }
+                    pollRunnable = poll
 
                     wv.webViewClient = object : WebViewClient() {
                         override fun onPageFinished(view: WebView, url: String?) {
-                            handler.postDelayed(pollRunnable, POLL_INTERVAL_MS)
+                            handler.postDelayed(poll, POLL_INTERVAL_MS)
                         }
                     }
 
