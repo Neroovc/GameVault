@@ -486,7 +486,8 @@ private fun GameHeader(
                 style = MaterialTheme.typography.titleLarge,
             )
 
-            if ((game.publisher ?: game.developer) != null) {
+            val headerDeveloper = game.publisher ?: game.developer
+            if (headerDeveloper != null) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Filled.Person,
@@ -496,7 +497,7 @@ private fun GameHeader(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = game.publisher ?: game.developer,
+                        text = headerDeveloper,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
