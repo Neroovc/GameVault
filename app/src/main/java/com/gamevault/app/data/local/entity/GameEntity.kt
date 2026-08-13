@@ -35,6 +35,7 @@ data class GameEntity(
 
     val description: String? = null,
     val developer: String? = null,
+    val publisher: String? = null,
 
     val engine: String? = null,          // stored as GameEngine.name
     val version: String? = null,
@@ -112,6 +113,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     localCoverPath = localCoverPath,
     description = description,
     developer = developer,
+    publisher = publisher,
     engine = engine?.let { runCatching { GameEngine.valueOf(it) }.getOrNull() },
     version = version,
     status = runCatching { GameStatus.valueOf(status) }.getOrElse { GameStatus.NOT_STARTED },
@@ -137,6 +139,7 @@ fun Game.toEntity(): GameEntity = GameEntity(
     localCoverPath = localCoverPath,
     description = description,
     developer = developer,
+    publisher = publisher,
     engine = engine?.name,
     version = version,
     status = status.name,

@@ -9,7 +9,8 @@ data class Game(
     val coverUrl: String? = null,
     val localCoverPath: String? = null,   // absolute path to a user-picked cover (device-local)
     val description: String? = null,
-    val developer: String? = null,
+    val developer: String? = null,           // real creator, scraped from thread body
+    val publisher: String? = null,           // thread OP / re-publisher, article[data-author]
     val engine: GameEngine? = null,
     val version: String? = null,
     val status: GameStatus = GameStatus.NOT_STARTED,

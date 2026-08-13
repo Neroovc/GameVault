@@ -32,7 +32,7 @@ import com.gamevault.app.data.local.entity.TagEntity
         GameTagCrossRef::class,
         GameCollectionCrossRef::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class GameVaultDatabase : RoomDatabase() {
@@ -73,13 +73,19 @@ abstract class GameVaultDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE games ADD COLUMN publisher TEXT")
+            }
+        }
+
         fun create(context: Context): GameVaultDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 GameVaultDatabase::class.java,
                 DB_NAME,
             )
-                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
         }

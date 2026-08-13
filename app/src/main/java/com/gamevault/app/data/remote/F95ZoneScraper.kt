@@ -81,6 +81,7 @@ class F95ZoneScraper {
                     title = title,
                     description = extractDescription(doc),
                     developer = extractDeveloper(doc),
+                    publisher = doc.selectFirst("article[data-author]")?.attr("data-author"),
                     engine = extractEngine(doc),
                     version = extractVersion(doc),
                     changelog = extractChangelog(doc),
