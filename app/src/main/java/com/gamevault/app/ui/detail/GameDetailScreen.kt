@@ -1257,7 +1257,41 @@ private fun DetailsSection(
             Text("Details", style = MaterialTheme.typography.titleSmall)
 
             if (!game.developer.isNullOrBlank()) {
-                DetailsRow(icon = Icons.Filled.Person, label = "Developer", value = game.developer)
+                var developerMenuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    DetailsRow(
+                        icon = Icons.Filled.Person,
+                        label = "Developer",
+                        value = game.developer,
+                        onClick = if (devLinks.isNotEmpty()) {
+                            { developerMenuExpanded = true }
+                        } else {
+                            null
+                        },
+                    )
+                    DropdownMenu(
+                        expanded = developerMenuExpanded,
+                        onDismissRequest = { developerMenuExpanded = false },
+                    ) {
+                        devLinks.forEach { link ->
+                            val (icon, label) = devLinkPlatform(link)
+                            DropdownMenuItem(
+                                text = { Text(label) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                },
+                                onClick = {
+                                    developerMenuExpanded = false
+                                    openUrl(context, link)
+                                },
+                            )
+                        }
+                    }
+                }
             }
             if (game.engine != null) {
                 DetailsRow(icon = Icons.Filled.Build, label = "Engine", value = game.engine.displayName)
@@ -1381,11 +1415,19 @@ private fun DetailsRow(
     label: String,
     value: String,
     maxLines: Int = Int.MAX_VALUE,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
+            .padding(top = 8.dp)
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(onClick = onClick)
+                } else {
+                    Modifier
+                }
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
