@@ -54,6 +54,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
@@ -64,8 +66,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.pullToRefresh
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.rememberSnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -100,6 +105,7 @@ import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.ui.components.GameCard
 import com.gamevault.app.ui.components.statusColor
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,6 +132,16 @@ fun LibraryScreen(
     var showBulkCollectionDialog by remember { mutableStateOf(false) }
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val refreshMessage by viewModel.refreshMessage.collectAsState()
+    LaunchedEffect(refreshMessage) {
+        refreshMessage?.let { message ->
+            // Clear before showing so a recomposition (e.g. rotation) cannot
+            // re-show a stale message.
+            viewModel.clearRefreshMessage()
+            snackbarHostState.showSnackbar(message)
+        }
+    }
 
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(pageCount = { uiState.stripTabs.size })
@@ -140,6 +156,7 @@ fun LibraryScreen(
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             if (isSelectionMode) {
                 SelectionTopAppBar(
@@ -324,6 +341,11 @@ fun LibraryScreen(
                             else uiState.displayItems.flat
                         else -> emptyList<DisplayItem>()
                     }
+                    // Fake spinner: the real update job runs in the background
+                    // (ViewModel), so each page only shows a cosmetic 1s spin.
+                    var isRefreshing by remember(pagerState.currentPage) {
+                        mutableStateOf(false)
+                    }
                     LibraryGridPage(
                         uiState = uiState,
                         displayItems = displayItems,
@@ -331,6 +353,15 @@ fun LibraryScreen(
                         listState = scrollStates.getOrPut(tabKey) { LazyGridState() },
                         selectedIds = selectedIds,
                         isSelectionMode = isSelectionMode,
+                        isRefreshing = isRefreshing,
+                        onRefresh = {
+                            isRefreshing = true
+                            scope.launch {
+                                delay(1_000)
+                                isRefreshing = false
+                            }
+                            viewModel.refreshLibrary()
+                        },
                         selectionViewModel = selectionViewModel,
                         onGameClick = onGameClick,
                     )
@@ -548,6 +579,7 @@ private fun CountBadge(
 //  LIBRARY GRID PAGE
 // ═══════════════════════════════════════════════════════════
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun LibraryGridPage(
     uiState: LibraryUiState,
@@ -556,6 +588,8 @@ private fun LibraryGridPage(
     listState: LazyGridState,
     selectedIds: Set<Long>,
     isSelectionMode: Boolean,
+    isRefreshing: Boolean,
+    onRefresh: () -> Unit,
     selectionViewModel: LibrarySelectionViewModel,
     onGameClick: (Long) -> Unit,
 ) {
@@ -564,54 +598,74 @@ private fun LibraryGridPage(
         return
     }
 
-    LazyVerticalGrid(
-        columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
-        contentPadding = PaddingValues(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        state = listState,
-        modifier = Modifier.fillMaxSize(),
+    // Mihon-style pull-to-refresh, disabled while multi-selecting so the
+    // gesture never fights the selection interactions.
+    val pullRefreshState = rememberPullToRefreshState()
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pullToRefresh(
+                isRefreshing = isRefreshing,
+                state = pullRefreshState,
+                enabled = !isSelectionMode,
+                onRefresh = onRefresh,
+            ),
     ) {
-        displayItems.forEach { item ->
-            when (item) {
-                is DisplayItem.Header -> {
-                    item(
-                        span = { GridItemSpan(maxLineSpan) },
-                        contentType = "header",
-                    ) {
-                        GroupHeader(
-                            label = item.label,
-                            count = item.count,
-                            accentColor = groupHeaderAccent(groupBy, item.groupKey),
-                        )
+        LazyVerticalGrid(
+            columns = if (uiState.gridMode == GridMode.LIST) GridCells.Fixed(1) else GridCells.Adaptive(minSize = 150.dp),
+            contentPadding = PaddingValues(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            displayItems.forEach { item ->
+                when (item) {
+                    is DisplayItem.Header -> {
+                        item(
+                            span = { GridItemSpan(maxLineSpan) },
+                            contentType = "header",
+                        ) {
+                            GroupHeader(
+                                label = item.label,
+                                count = item.count,
+                                accentColor = groupHeaderAccent(groupBy, item.groupKey),
+                            )
+                        }
                     }
-                }
-                is DisplayItem.GameItem -> {
-                    item(key = item.uniqueKey, contentType = "game") {
-                        GameCard(
-                            game = item.game,
-                            isSelected = item.game.id in selectedIds,
-                            gridMode = uiState.gridMode,
-                            showEngine = uiState.showEngine,
-                            showSource = uiState.showSource,
-                            showStatus = uiState.showStatus,
-                            statusStyle = uiState.statusStyle,
-                            ratingStyle = uiState.ratingStyle,
-                            onClick = {
-                                if (isSelectionMode) {
+                    is DisplayItem.GameItem -> {
+                        item(key = item.uniqueKey, contentType = "game") {
+                            GameCard(
+                                game = item.game,
+                                isSelected = item.game.id in selectedIds,
+                                gridMode = uiState.gridMode,
+                                showEngine = uiState.showEngine,
+                                showSource = uiState.showSource,
+                                showStatus = uiState.showStatus,
+                                statusStyle = uiState.statusStyle,
+                                ratingStyle = uiState.ratingStyle,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        selectionViewModel.toggleSelection(item.game.id)
+                                    } else {
+                                        onGameClick(item.game.id)
+                                    }
+                                },
+                                onLongClick = {
                                     selectionViewModel.toggleSelection(item.game.id)
-                                } else {
-                                    onGameClick(item.game.id)
-                                }
-                            },
-                            onLongClick = {
-                                selectionViewModel.toggleSelection(item.game.id)
-                            },
-                        )
+                                },
+                            )
+                        }
                     }
                 }
             }
         }
+
+        PullToRefreshDefaults.Indicator(
+            state = pullRefreshState,
+            isRefreshing = isRefreshing,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
     }
 }
 

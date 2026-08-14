@@ -15,6 +15,7 @@ import com.gamevault.app.domain.repository.GameRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -150,6 +151,12 @@ class LibraryViewModel(
     private val _groupBy = MutableStateFlow(GroupBy.NONE)
     private val _gridMode = MutableStateFlow(GridMode.COMFORTABLE)
     val gridMode: StateFlow<GridMode> = _gridMode.asStateFlow()
+
+    private val _refreshMessage = MutableStateFlow<String?>(null)
+    val refreshMessage: StateFlow<String?> = _refreshMessage.asStateFlow()
+
+    /** In-flight refresh pass — a new pull must not start a concurrent one. */
+    private var refreshJob: Job? = null
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -413,6 +420,26 @@ class LibraryViewModel(
 
     fun deleteGames(gameIds: List<Long>) {
         viewModelScope.launch { repository.deleteGames(gameIds) }
+    }
+
+    /**
+     * Fire-and-forget library update: re-scrape every saved game's metadata
+     * in the background and surface the outcome as a snackbar message.
+     */
+    fun refreshLibrary() {
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch {
+            val result = repository.refreshSavedGames()
+            _refreshMessage.value = when {
+                result.errors > 0 -> "Update errors: ${result.errors}"
+                result.updated > 0 -> "${result.updated} games updated"
+                else -> "No updates found"
+            }
+        }
+    }
+
+    fun clearRefreshMessage() {
+        _refreshMessage.value = null
     }
 
     /**

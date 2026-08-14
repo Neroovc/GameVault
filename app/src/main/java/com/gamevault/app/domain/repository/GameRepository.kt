@@ -9,6 +9,19 @@ import com.gamevault.app.domain.model.Tag
 import kotlinx.coroutines.flow.Flow
 
 /**
+ * Outcome of a library refresh pass.
+ *
+ * Every in-library game counts toward [checked]; games whose scraped fields
+ * actually changed count toward [updated]; scrape failures count toward
+ * [errors]. Sources without a scraper are checked but never updated.
+ */
+data class LibraryRefreshResult(
+    val updated: Int,
+    val checked: Int,
+    val errors: Int,
+)
+
+/**
  * Single source of truth for game library data.
  * Domain layer interface — implementation lives in data layer.
  */
@@ -26,6 +39,7 @@ interface GameRepository {
     suspend fun getGameBySourceUrl(url: String): Game?
     suspend fun saveGame(game: Game): Long
     suspend fun updateGame(game: Game)
+    suspend fun refreshSavedGames(): LibraryRefreshResult
     suspend fun updateGamePlayTime(gameId: Long, minutes: Long)
     suspend fun setGameInLibrary(gameId: Long, inLibrary: Boolean)
     suspend fun setGameLocalCover(gameId: Long, path: String?)
