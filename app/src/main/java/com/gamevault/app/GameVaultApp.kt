@@ -145,6 +145,8 @@ class AppContainer(private val app: GameVaultApp) {
             collectionDao = database.collectionDao(),
             gameCollectionDao = database.gameCollectionDao(),
             gameTagDao = database.gameTagDao(),
+            appSettings = appSettings,
+            database = database,
         )
     }
 }

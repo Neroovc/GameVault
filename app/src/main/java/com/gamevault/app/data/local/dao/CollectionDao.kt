@@ -21,9 +21,16 @@ interface CollectionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCollection(collection: CollectionEntity): Long
 
+    /** Insert without overwriting an existing collection with the same unique name; returns -1 on conflict. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertCollectionIgnore(collection: CollectionEntity): Long
+
     @Update
     suspend fun updateCollection(collection: CollectionEntity)
 
     @Delete
     suspend fun deleteCollection(collection: CollectionEntity)
+
+    @Query("DELETE FROM collections")
+    suspend fun deleteAll()
 }

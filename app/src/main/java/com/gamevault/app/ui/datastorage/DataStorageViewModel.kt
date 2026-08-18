@@ -6,6 +6,7 @@ import android.os.StatFs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.gamevault.app.data.local.BackupOptions
 import com.gamevault.app.data.local.GameVaultBackup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,11 +50,11 @@ class DataStorageViewModel(
         }
     }
 
-    fun exportBackup(context: Context, uri: Uri) {
+    fun exportBackup(context: Context, uri: Uri, options: BackupOptions = BackupOptions.ALL) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isExporting = true)
             try {
-                backup.exportToFile(context, uri)
+                backup.exportToFile(context, uri, options)
                 _uiState.value = _uiState.value.copy(
                     isExporting = false,
                     lastBackupResult = "Backup exported successfully",
@@ -75,9 +76,12 @@ class DataStorageViewModel(
                 _uiState.value = _uiState.value.copy(
                     isImporting = false,
                     lastBackupResult = if (result.success) {
-                        "Imported ${result.gamesImported} games, ${result.collectionsImported} collections"
+                        buildString {
+                            append("Imported ${result.gamesImported} games, ${result.collectionsImported} collections")
+                            if (result.settingsImported) append(", settings restored")
+                        }
                     } else {
-                        "Import failed: ${result.message}"
+                        result.message
                     },
                 )
             } catch (e: Exception) {

@@ -83,4 +83,7 @@ interface GameDao {
 
     @Query("DELETE FROM games WHERE id IN (:gameIds)")
     suspend fun deleteGamesBulk(gameIds: List<Long>)
+
+    @Query("DELETE FROM games")
+    suspend fun deleteAll()
 }

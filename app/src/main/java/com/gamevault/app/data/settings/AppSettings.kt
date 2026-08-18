@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "gamevault_settings")
@@ -73,6 +74,28 @@ enum class SourceRequestPace(
             entries.firstOrNull { it.value == value } ?: GENTLE
     }
 }
+
+/**
+ * Immutable snapshot of the persisted app settings, used for backup and restore.
+ * Nullable fields mean "not exported" or "do not touch on restore".
+ */
+data class AppSettingsSnapshot(
+    val themeMode: Int? = null,
+    val colorPalette: String? = null,
+    val amoledDark: Boolean? = null,
+    val gifAutoplay: Boolean? = null,
+    val gridMode: Int? = null,
+    val showEngine: Boolean? = null,
+    val showSource: Boolean? = null,
+    val statusStyle: String? = null,
+    val ratingStyle: String? = null,
+    val defaultCollectionId: Long? = null,
+    val disabledSourceIds: Set<String>? = null,
+    val f95zoneCookie: String? = null,
+    val ryuugamesCfCookie: String? = null,
+    val sourceRequestPace: Int? = null,
+    val incognitoMode: Boolean? = null,
+)
 
 /**
  * Persisted app settings backed by Jetpack DataStore.
@@ -310,6 +333,59 @@ class AppSettings(private val context: Context) {
     suspend fun setIncognitoMode(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[Keys.INCOGNITO_MODE] = enabled
+        }
+    }
+
+    /**
+     * Capture the current persisted values. Cookies are only captured when [includeCookies] is true.
+     */
+    suspend fun snapshot(includeCookies: Boolean = true): AppSettingsSnapshot {
+        val prefs = context.dataStore.data.first()
+        return AppSettingsSnapshot(
+            themeMode = prefs[Keys.THEME_MODE],
+            colorPalette = prefs[Keys.COLOR_PALETTE],
+            amoledDark = prefs[Keys.AMOLED_DARK],
+            gifAutoplay = prefs[Keys.GIF_AUTOPLAY],
+            gridMode = prefs[Keys.GRID_MODE],
+            showEngine = prefs[Keys.SHOW_ENGINE],
+            showSource = prefs[Keys.SHOW_SOURCE],
+            statusStyle = prefs[Keys.STATUS_STYLE],
+            ratingStyle = prefs[Keys.RATING_STYLE],
+            defaultCollectionId = prefs[Keys.DEFAULT_COLLECTION_ID],
+            disabledSourceIds = prefs[Keys.DISABLED_SOURCE_IDS],
+            f95zoneCookie = if (includeCookies) prefs[Keys.F95ZONE_COOKIE] else null,
+            ryuugamesCfCookie = if (includeCookies) prefs[Keys.RYUUGAMES_CF_COOKIE] else null,
+            sourceRequestPace = prefs[Keys.SOURCE_REQUEST_PACE],
+            incognitoMode = prefs[Keys.INCOGNITO_MODE],
+        )
+    }
+
+    /**
+     * Apply the non-null fields of [snapshot] to the persisted settings.
+     * Null fields are left untouched so partial backups never overwrite
+     * values that were not exported.
+     */
+    suspend fun applySnapshot(snapshot: AppSettingsSnapshot) {
+        context.dataStore.edit { prefs ->
+            snapshot.themeMode?.let { prefs[Keys.THEME_MODE] = it }
+            snapshot.colorPalette?.let { prefs[Keys.COLOR_PALETTE] = it }
+            snapshot.amoledDark?.let { prefs[Keys.AMOLED_DARK] = it }
+            snapshot.gifAutoplay?.let { prefs[Keys.GIF_AUTOPLAY] = it }
+            snapshot.gridMode?.let { prefs[Keys.GRID_MODE] = it }
+            snapshot.showEngine?.let { prefs[Keys.SHOW_ENGINE] = it }
+            snapshot.showSource?.let { prefs[Keys.SHOW_SOURCE] = it }
+            snapshot.statusStyle?.let { prefs[Keys.STATUS_STYLE] = it }
+            snapshot.ratingStyle?.let { prefs[Keys.RATING_STYLE] = it }
+            snapshot.defaultCollectionId?.let { prefs[Keys.DEFAULT_COLLECTION_ID] = it }
+            // DataStore throws on empty string sets — skip the write instead of
+            // storing an empty set (mirrors setSourceEnabled semantics).
+            if (!snapshot.disabledSourceIds.isNullOrEmpty()) {
+                prefs[Keys.DISABLED_SOURCE_IDS] = snapshot.disabledSourceIds
+            }
+            snapshot.f95zoneCookie?.let { prefs[Keys.F95ZONE_COOKIE] = it }
+            snapshot.ryuugamesCfCookie?.let { prefs[Keys.RYUUGAMES_CF_COOKIE] = it }
+            snapshot.sourceRequestPace?.let { prefs[Keys.SOURCE_REQUEST_PACE] = it }
+            snapshot.incognitoMode?.let { prefs[Keys.INCOGNITO_MODE] = it }
         }
     }
 }

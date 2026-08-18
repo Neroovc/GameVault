@@ -2,6 +2,7 @@ package com.gamevault.app.data.local
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.withTransaction
 import com.gamevault.app.data.local.dao.CollectionDao
 import com.gamevault.app.data.local.dao.GameCollectionDao
 import com.gamevault.app.data.local.dao.GameDao
@@ -16,6 +17,8 @@ import com.gamevault.app.data.local.entity.GameRouteEntity
 import com.gamevault.app.data.local.entity.GameTagCrossRef
 import com.gamevault.app.data.local.entity.PlaySessionEntity
 import com.gamevault.app.data.local.entity.TagEntity
+import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.data.settings.AppSettingsSnapshot
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.reflect.TypeToken
@@ -32,6 +35,8 @@ data class BackupData(
     val routes: List<BackupRoute> = emptyList(),
     val tags: List<BackupTag> = emptyList(),
     val gameTags: List<BackupGameTag> = emptyList(),
+    val appSettings: AppSettingsSnapshot? = null,
+    val includedGroups: List<String> = emptyList(),
 )
 
 data class BackupGame(
@@ -101,6 +106,8 @@ data class ImportResult(
     val message: String,
     val gamesImported: Int,
     val collectionsImported: Int,
+    val settingsImported: Boolean = false,
+    val groupsImported: List<String> = emptyList(),
 )
 
 class GameVaultBackup(
@@ -111,10 +118,25 @@ class GameVaultBackup(
     private val collectionDao: CollectionDao,
     private val gameCollectionDao: GameCollectionDao,
     private val gameTagDao: GameTagDao,
+    private val appSettings: AppSettings,
+    private val database: GameVaultDatabase,
 ) {
     private val gson: Gson = GsonBuilder().setPrettyPrinting().create()
 
-    suspend fun exportToJson(): String {
+    private companion object {
+        const val GROUP_LIBRARY_ENTRIES = "libraryEntries"
+        const val GROUP_COLLECTIONS = "collections"
+        const val GROUP_HISTORY = "history"
+        const val GROUP_TAGS = "tags"
+        const val GROUP_APP_SETTINGS = "appSettings"
+    }
+
+    suspend fun exportToJson(options: BackupOptions = BackupOptions.ALL): String {
+        val wantLibrary = options.libraryEntries
+        val wantCollections = options.collections
+        val wantHistory = options.history
+        val wantTags = options.tags
+
         val allGames = gameDao.getAllGamesUnfiltered()
         val allRoutes = routeDao.getAllRoutes()
         val allSessions = sessionDao.getAllSessions()
@@ -131,84 +153,132 @@ class GameVaultBackup(
         val tagIndex = mutableMapOf<Long, Int>()
         allTags.forEachIndexed { i, t -> tagIndex[t.id] = i }
 
+        val includedGroups = mutableListOf<String>().apply {
+            if (wantLibrary) add(GROUP_LIBRARY_ENTRIES)
+            if (wantCollections) add(GROUP_COLLECTIONS)
+            if (wantHistory) add(GROUP_HISTORY)
+            if (wantTags) add(GROUP_TAGS)
+            if (options.appSettings) add(GROUP_APP_SETTINGS)
+        }
+
         val backupData = BackupData(
-            games = allGames.map { gwr ->
-                BackupGame(
-                    title = gwr.game.title,
-                    inLibrary = gwr.game.inLibrary,
-                    coverUrl = gwr.game.coverUrl,
-                    description = gwr.game.description,
-                    developer = gwr.game.developer,
-                    engine = gwr.game.engine,
-                    version = gwr.game.version,
-                    status = gwr.game.status,
-                    personalRating = gwr.game.personalRating,
-                    f95Rating = gwr.game.f95Rating,
-                    dateAdded = gwr.game.dateAdded,
-                    lastPlayed = gwr.game.lastPlayed,
-                    playTimeMinutes = gwr.game.playTimeMinutes,
-                    notes = gwr.game.notes,
-                    f95Url = gwr.game.f95Url,
-                    sourceType = gwr.game.sourceType,
-                    sourceUrl = gwr.game.sourceUrl,
-                    changelog = gwr.game.changelog,
-                    devLinks = gwr.game.devLinks
-                        ?.let { parseDevLinks(it) }
-                        ?: emptyList(),
-                    downloadLinks = gwr.game.downloadLinks
-                        ?.let { parseDownloadLinks(it) }
-                        ?: emptyList(),
-                )
+            games = if (wantLibrary) {
+                allGames.map { gwr ->
+                    BackupGame(
+                        title = gwr.game.title,
+                        inLibrary = gwr.game.inLibrary,
+                        coverUrl = gwr.game.coverUrl,
+                        description = gwr.game.description,
+                        developer = gwr.game.developer,
+                        engine = gwr.game.engine,
+                        version = gwr.game.version,
+                        status = gwr.game.status,
+                        personalRating = gwr.game.personalRating,
+                        f95Rating = gwr.game.f95Rating,
+                        dateAdded = gwr.game.dateAdded,
+                        lastPlayed = gwr.game.lastPlayed,
+                        playTimeMinutes = gwr.game.playTimeMinutes,
+                        notes = gwr.game.notes,
+                        f95Url = gwr.game.f95Url,
+                        sourceType = gwr.game.sourceType,
+                        sourceUrl = gwr.game.sourceUrl,
+                        changelog = gwr.game.changelog,
+                        devLinks = gwr.game.devLinks
+                            ?.let { parseStringList(it) }
+                            ?: emptyList(),
+                        downloadLinks = gwr.game.downloadLinks
+                            ?.let { parseStringList(it) }
+                            ?: emptyList(),
+                    )
+                }
+            } else {
+                emptyList()
             },
-            collections = allCollections.map { entity ->
-                BackupCollection(
-                    name = entity.name,
-                    description = entity.description,
-                    color = entity.color,
-                    order = entity.order,
-                )
+            collections = if (wantCollections) {
+                allCollections.map { entity ->
+                    BackupCollection(
+                        name = entity.name,
+                        description = entity.description,
+                        color = entity.color,
+                        order = entity.order,
+                    )
+                }
+            } else {
+                emptyList()
             },
-            gameCollections = allGameCollections.map { ref ->
-                BackupGameCollection(
-                    gameIndex = gameIndex[ref.gameId] ?: 0,
-                    collectionIndex = collectionIndex[ref.collectionId] ?: 0,
-                )
+            gameCollections = if (wantCollections) {
+                allGameCollections.map { ref ->
+                    BackupGameCollection(
+                        gameIndex = gameIndex[ref.gameId] ?: 0,
+                        collectionIndex = collectionIndex[ref.collectionId] ?: 0,
+                    )
+                }
+            } else {
+                emptyList()
             },
-            playSessions = allSessions.map { entity ->
-                BackupPlaySession(
-                    gameIndex = gameIndex[entity.gameId] ?: 0,
-                    routeIndex = entity.routeId?.let { null },
-                    startTime = entity.startTime,
-                    endTime = entity.endTime,
-                    durationMinutes = entity.durationMinutes,
-                    notes = entity.notes,
-                )
+            playSessions = if (wantHistory) {
+                allSessions.map { entity ->
+                    BackupPlaySession(
+                        gameIndex = gameIndex[entity.gameId] ?: 0,
+                        // routeIndex is always null on export — route linkage is
+                        // not preserved (known limitation, left as-is).
+                        routeIndex = null,
+                        startTime = entity.startTime,
+                        endTime = entity.endTime,
+                        durationMinutes = entity.durationMinutes,
+                        notes = entity.notes,
+                    )
+                }
+            } else {
+                emptyList()
             },
-            routes = allRoutes.map { entity ->
-                BackupRoute(
-                    gameIndex = gameIndex[entity.gameId] ?: 0,
-                    name = entity.name,
-                    progress = entity.progress,
-                    status = entity.status,
-                    order = entity.order,
-                    notes = entity.notes,
-                )
+            routes = if (wantHistory) {
+                allRoutes.map { entity ->
+                    BackupRoute(
+                        gameIndex = gameIndex[entity.gameId] ?: 0,
+                        name = entity.name,
+                        progress = entity.progress,
+                        status = entity.status,
+                        order = entity.order,
+                        notes = entity.notes,
+                    )
+                }
+            } else {
+                emptyList()
             },
-            tags = allTags.map { entity ->
-                BackupTag(name = entity.name)
+            tags = if (wantTags) {
+                allTags.map { entity ->
+                    BackupTag(name = entity.name)
+                }
+            } else {
+                emptyList()
             },
-            gameTags = allGameTags.map { ref ->
-                BackupGameTag(
-                    gameIndex = gameIndex[ref.gameId] ?: 0,
-                    tagIndex = tagIndex[ref.tagId] ?: 0,
-                )
+            gameTags = if (wantTags) {
+                allGameTags.map { ref ->
+                    BackupGameTag(
+                        gameIndex = gameIndex[ref.gameId] ?: 0,
+                        tagIndex = tagIndex[ref.tagId] ?: 0,
+                    )
+                }
+            } else {
+                emptyList()
             },
+            appSettings = if (options.appSettings) {
+                appSettings.snapshot(includeCookies = options.privateSettings)
+            } else {
+                null
+            },
+            includedGroups = includedGroups,
         )
         return gson.toJson(backupData)
     }
 
-    suspend fun exportToFile(context: Context, uri: Uri) {
-        val json = exportToJson()
+    suspend fun exportToFile(
+        context: Context,
+        uri: Uri,
+        options: BackupOptions = BackupOptions.ALL,
+    ) {
+        val json = exportToJson(options)
         context.contentResolver.openOutputStream(uri)?.use { outputStream ->
             outputStream.write(json.toByteArray(Charsets.UTF_8))
         }
@@ -223,109 +293,180 @@ class GameVaultBackup(
                 return ImportResult(false, "Unsupported backup version", 0, 0)
             }
 
-            // Clear cross-refs first (FK constraints)
-            gameTagDao.deleteAll()
-            gameCollectionDao.deleteAll()
+            // Empty includedGroups means a legacy backup: full destructive restore.
+            val fullRestore = backupData.includedGroups.isEmpty()
+            val wantLibrary = fullRestore || GROUP_LIBRARY_ENTRIES in backupData.includedGroups
+            val wantCollections = fullRestore || GROUP_COLLECTIONS in backupData.includedGroups
+            val wantHistory = fullRestore || GROUP_HISTORY in backupData.includedGroups
+            val wantTags = fullRestore || GROUP_TAGS in backupData.includedGroups
+            val wantAppSettings = fullRestore || GROUP_APP_SETTINGS in backupData.includedGroups
 
-            // Import games — store list-position → newId mapping
-            val newGameIds = mutableListOf<Long>()
-            for (bg in backupData.games) {
-                val id = gameDao.insertGame(
-                    GameEntity(
-                        title = bg.title,
-                        inLibrary = bg.inLibrary,
-                        coverUrl = bg.coverUrl,
-                        description = bg.description,
-                        developer = bg.developer,
-                        engine = bg.engine,
-                        version = bg.version,
-                        status = bg.status,
-                        personalRating = bg.personalRating,
-                        f95Rating = bg.f95Rating,
-                        dateAdded = bg.dateAdded,
-                        lastPlayed = bg.lastPlayed,
-                        playTimeMinutes = bg.playTimeMinutes,
-                        notes = bg.notes,
-                        f95Url = bg.f95Url,
-                        sourceType = bg.sourceType,
-                        sourceUrl = bg.sourceUrl,
-                        changelog = bg.changelog,
-                        devLinks = bg.devLinks.orEmpty().takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
-                        downloadLinks = bg.downloadLinks.orEmpty().takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
-                    )
-                )
-                newGameIds.add(id)
-            }
-
-            // Import collections
-            val newCollectionIds = mutableListOf<Long>()
-            for (bc in backupData.collections) {
-                val id = collectionDao.insertCollection(
-                    CollectionEntity(
-                        name = bc.name,
-                        description = bc.description,
-                        color = bc.color,
-                        order = bc.order,
-                    )
-                )
-                newCollectionIds.add(id)
-            }
-
-            // Import routes
-            for (br in backupData.routes) {
-                val gameId = newGameIds[br.gameIndex] ?: continue
-                routeDao.insertRoute(
-                    GameRouteEntity(
-                        gameId = gameId,
-                        name = br.name,
-                        progress = br.progress,
-                        status = br.status,
-                        order = br.order,
-                        notes = br.notes,
-                    )
+            // Fail closed on partial group sets: a Library entries restore is
+            // destructive by design (gameDao.deleteAll() FK-cascades through
+            // routes, sessions, and cross-refs), so it must always be
+            // accompanied by its dependent groups. Crafted or legacy files that
+            // violate this invariant are rejected before anything is wiped.
+            if (!fullRestore && wantLibrary && (!wantCollections || !wantHistory || !wantTags)) {
+                return ImportResult(
+                    false,
+                    "Incompatible backup: Library entries requires Collections, Play history, and Tags",
+                    0,
+                    0,
                 )
             }
 
-            // Import play sessions
-            for (bps in backupData.playSessions) {
-                val gameId = newGameIds[bps.gameIndex] ?: continue
-                sessionDao.insertSession(
-                    PlaySessionEntity(
-                        gameId = gameId,
-                        startTime = bps.startTime,
-                        endTime = bps.endTime,
-                        durationMinutes = bps.durationMinutes,
-                        notes = bps.notes,
-                    )
-                )
+            var gamesInserted = 0
+            var collectionsInserted = 0
+            var settingsImported = false
+
+            // The whole wipe + re-insert is one transaction: a failure anywhere
+            // rolls the database back to its pre-import state.
+            database.withTransaction {
+                // The gate above guarantees a library restore always carries its
+                // dependent groups (collections, tags, history), so the cascade
+                // of gameDao.deleteAll() (ON DELETE CASCADE on routes, sessions,
+                // and cross-refs) cannot orphan or wipe excluded-group data.
+                // Collections and tags import additively when library is excluded.
+                if (wantLibrary) {
+                    gameDao.deleteAll()
+                    if (wantTags) tagDao.deleteAll()
+                    if (wantCollections) collectionDao.deleteAll()
+                }
+
+                // Import games — store list-position → newId mapping
+                val newGameIds = mutableListOf<Long>()
+                if (wantLibrary) {
+                    for (bg in backupData.games) {
+                        val id = gameDao.insertGame(
+                            GameEntity(
+                                title = bg.title,
+                                inLibrary = bg.inLibrary,
+                                coverUrl = bg.coverUrl,
+                                description = bg.description,
+                                developer = bg.developer,
+                                engine = bg.engine,
+                                version = bg.version,
+                                status = bg.status,
+                                personalRating = bg.personalRating,
+                                f95Rating = bg.f95Rating,
+                                dateAdded = bg.dateAdded,
+                                lastPlayed = bg.lastPlayed,
+                                playTimeMinutes = bg.playTimeMinutes,
+                                notes = bg.notes,
+                                f95Url = bg.f95Url,
+                                sourceType = bg.sourceType,
+                                sourceUrl = bg.sourceUrl,
+                                changelog = bg.changelog,
+                                devLinks = bg.devLinks.orEmpty().takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
+                                downloadLinks = bg.downloadLinks.orEmpty().takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
+                            )
+                        )
+                        newGameIds.add(id)
+                        gamesInserted++
+                    }
+                }
+
+                // Import collections additively: existing unique names survive
+                // (IGNORE), only genuinely new rows are counted and linked.
+                val newCollectionIds = mutableListOf<Long>()
+                if (wantCollections) {
+                    for (bc in backupData.collections) {
+                        val id = collectionDao.insertCollectionIgnore(
+                            CollectionEntity(
+                                name = bc.name,
+                                description = bc.description,
+                                color = bc.color,
+                                order = bc.order,
+                            )
+                        )
+                        if (id > 0) {
+                            newCollectionIds.add(id)
+                            collectionsInserted++
+                        }
+                    }
+                }
+
+                // Import routes
+                if (wantHistory) {
+                    for (br in backupData.routes) {
+                        val gameId = newGameIds.getOrNull(br.gameIndex)?.takeIf { it > 0 } ?: continue
+                        routeDao.insertRoute(
+                            GameRouteEntity(
+                                gameId = gameId,
+                                name = br.name,
+                                progress = br.progress,
+                                status = br.status,
+                                order = br.order,
+                                notes = br.notes,
+                            )
+                        )
+                    }
+                }
+
+                // Import play sessions
+                if (wantHistory) {
+                    for (bps in backupData.playSessions) {
+                        val gameId = newGameIds.getOrNull(bps.gameIndex)?.takeIf { it > 0 } ?: continue
+                        sessionDao.insertSession(
+                            PlaySessionEntity(
+                                gameId = gameId,
+                                startTime = bps.startTime,
+                                endTime = bps.endTime,
+                                durationMinutes = bps.durationMinutes,
+                                notes = bps.notes,
+                            )
+                        )
+                    }
+                }
+
+                // Import tags additively: IGNORE returns -1 for duplicate names,
+                // so only genuinely new tags are tracked for cross-ref linking.
+                val newTagIds = mutableListOf<Long>()
+                if (wantTags) {
+                    for (bt in backupData.tags) {
+                        val id = tagDao.insertTag(TagEntity(name = bt.name))
+                        if (id > 0) newTagIds.add(id)
+                    }
+                }
+
+                // Import game-collection cross-refs. Only linkable when games
+                // were restored in this import; otherwise skip harmlessly.
+                if (wantCollections) {
+                    for (bgc in backupData.gameCollections) {
+                        val gameId = newGameIds.getOrNull(bgc.gameIndex)?.takeIf { it > 0 } ?: continue
+                        val collectionId = newCollectionIds.getOrNull(bgc.collectionIndex)?.takeIf { it > 0 } ?: continue
+                        gameCollectionDao.insert(GameCollectionCrossRef(gameId, collectionId))
+                    }
+                }
+
+                // Import game-tag cross-refs. Only linkable when games were
+                // restored in this import; otherwise skip harmlessly.
+                if (wantTags) {
+                    for (bgt in backupData.gameTags) {
+                        val gameId = newGameIds.getOrNull(bgt.gameIndex)?.takeIf { it > 0 } ?: continue
+                        val tagId = newTagIds.getOrNull(bgt.tagIndex)?.takeIf { it > 0 } ?: continue
+                        gameTagDao.insert(GameTagCrossRef(gameId, tagId))
+                    }
+                }
             }
 
-            // Import tags
-            val newTagIds = mutableListOf<Long>()
-            for (bt in backupData.tags) {
-                val id = tagDao.insertTag(TagEntity(name = bt.name))
-                newTagIds.add(id)
-            }
-
-            // Import game-collection cross-refs
-            for (bgc in backupData.gameCollections) {
-                val gameId = newGameIds[bgc.gameIndex] ?: continue
-                val collectionId = newCollectionIds[bgc.collectionIndex] ?: continue
-                gameCollectionDao.insert(GameCollectionCrossRef(gameId, collectionId))
-            }
-
-            // Import game-tag cross-refs
-            for (bgt in backupData.gameTags) {
-                val gameId = newGameIds[bgt.gameIndex] ?: continue
-                val tagId = newTagIds[bgt.tagIndex] ?: continue
-                gameTagDao.insert(GameTagCrossRef(gameId, tagId))
+            // Import app settings, preserving local values for keys absent from
+            // the backup. Applied after the Room transaction commits; a failure
+            // here leaves settings unapplied but the database consistent.
+            if (wantAppSettings) {
+                backupData.appSettings?.let {
+                    appSettings.applySnapshot(it)
+                    settingsImported = true
+                }
             }
 
             ImportResult(
                 success = true,
                 message = "Import complete",
-                gamesImported = backupData.games.size,
-                collectionsImported = backupData.collections.size,
+                gamesImported = gamesInserted,
+                collectionsImported = collectionsInserted,
+                settingsImported = settingsImported,
+                groupsImported = backupData.includedGroups,
             )
         } catch (e: Exception) {
             ImportResult(false, "Import failed: ${e.message}", 0, 0)
@@ -345,14 +486,7 @@ class GameVaultBackup(
         }
     }
 
-    private fun parseDevLinks(raw: String?): List<String> {
-        if (raw.isNullOrBlank()) return emptyList()
-        return runCatching {
-            gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)
-        }.getOrElse { emptyList() }
-    }
-
-    private fun parseDownloadLinks(raw: String?): List<String> {
+    private fun parseStringList(raw: String?): List<String> {
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching {
             gson.fromJson<List<String>>(raw, object : TypeToken<List<String>>() {}.type)

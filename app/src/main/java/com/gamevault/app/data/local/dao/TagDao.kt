@@ -29,4 +29,7 @@ interface TagDao {
            "INNER JOIN game_tag_cross_ref gtc ON t.id = gtc.tag_id " +
            "WHERE gtc.game_id = :gameId ORDER BY t.name ASC")
     suspend fun getTagsForGame(gameId: Long): List<TagEntity>
+
+    @Query("DELETE FROM tags")
+    suspend fun deleteAll()
 }
