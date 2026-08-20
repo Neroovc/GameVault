@@ -18,6 +18,7 @@ data class Game(
     val f95Rating: Float? = null,            // from F95Zone
     val dateAdded: Long = System.currentTimeMillis(),
     val lastPlayed: Long? = null,
+    val lastChecked: Long? = null,           // last metadata check (refresh pass or update worker)
     val playTimeMinutes: Long = 0,
     val inLibrary: Boolean = true,           // soft flag; row stays when unmarked
     val notes: String? = null,

@@ -11,6 +11,7 @@ import com.gamevault.app.data.local.GameVaultDatabase
 import com.gamevault.app.data.remote.CloudflareCookieHelper
 import com.gamevault.app.data.remote.F95ZoneScraper
 import com.gamevault.app.data.remote.F95ZoneSource
+import com.gamevault.app.data.remote.F95ZoneUpdateWorker
 import com.gamevault.app.data.remote.FapForFunScraper
 import com.gamevault.app.data.remote.FapForFunSource
 import com.gamevault.app.data.remote.ItchScraper
@@ -22,6 +23,8 @@ import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.domain.repository.GameRepository
 import com.gamevault.app.domain.source.SourceManager
 import com.gamevault.app.domain.source.SourceRegistry
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 /**
  * Application class — holds the DI container.
@@ -35,6 +38,16 @@ class GameVaultApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         appContainer = AppContainer(this)
+        scheduleUpdateChecks()
+    }
+
+    private fun scheduleUpdateChecks() {
+        val interval = runBlocking { appContainer.appSettings.updateCheckInterval.first() }
+        if (interval.intervalMillis == null) {
+            F95ZoneUpdateWorker.cancel(this)
+        } else {
+            F95ZoneUpdateWorker.schedule(this, interval.value)
+        }
     }
 
     override fun newImageLoader(): ImageLoader {

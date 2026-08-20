@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.gamevault.app.data.settings.SourceRequestPace
+import com.gamevault.app.data.settings.UpdateCheckInterval
 import com.gamevault.app.ui.collections.CollectionWithCount
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -84,6 +85,12 @@ fun SettingsScreen(
                 SourcePaceSection(
                     currentPace = state.sourceRequestPace,
                     onPaceSelected = viewModel::setSourceRequestPace,
+                )
+            }
+            item {
+                UpdateCheckSection(
+                    currentInterval = state.updateCheckInterval,
+                    onIntervalSelected = viewModel::setUpdateCheckInterval,
                 )
             }
 
@@ -203,6 +210,54 @@ private fun SourcePaceSection(
                         Spacer(modifier = Modifier.width(12.dp))
                         Text(
                             text = pace.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateCheckSection(
+    currentInterval: UpdateCheckInterval,
+    onIntervalSelected: (UpdateCheckInterval) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Automatic update checks", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "Check tracked F95Zone games for new versions in the background",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Column(modifier = Modifier.selectableGroup()) {
+                UpdateCheckInterval.entries.forEach { interval ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .selectable(
+                                selected = currentInterval == interval,
+                                onClick = { onIntervalSelected(interval) },
+                                role = Role.RadioButton,
+                            )
+                            .padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentInterval == interval,
+                            onClick = null,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = interval.displayName,
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }

@@ -1,6 +1,8 @@
 package com.gamevault.app.data.remote
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -20,7 +22,9 @@ import com.gamevault.app.GameVaultApp
 import com.gamevault.app.MainActivity
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.SourceType
+import com.gamevault.app.domain.source.SourceResult
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.first
 
 /**
  * Periodically checks tracked F95Zone games for version updates.
@@ -34,11 +38,18 @@ class F95ZoneUpdateWorker(
     override suspend fun doWork(): Result {
         val app = applicationContext as GameVaultApp
         val repository = app.appContainer.gameRepository
-        val scraper = app.appContainer.f95ZoneScraper
+        val source = app.appContainer.f95ZoneSource
 
-        // Find tracked F95Zone games
-        val allGames = repository.getAllGames()
-        val trackedGames = allGames.filter { it.sourceType == SourceType.F95ZONE && it.f95Url != null }
+        val interval = app.appContainer.appSettings.updateCheckInterval.first()
+        val windowMillis = interval.intervalMillis ?: return Result.success()
+        val now = System.currentTimeMillis()
+
+        // Find tracked F95Zone games not yet checked within the fetch window
+        val trackedGames = repository.getAllGames().filter { game ->
+            if (game.sourceType != SourceType.F95ZONE || game.f95Url == null) return@filter false
+            val lastChecked = game.lastChecked ?: return@filter true
+            now - lastChecked >= windowMillis
+        }
 
         if (trackedGames.isEmpty()) return Result.success()
 
@@ -46,9 +57,12 @@ class F95ZoneUpdateWorker(
 
         for (game in trackedGames) {
             try {
-                val result = scraper.scrapeGame(game.f95Url!!)
-                if (result is ScrapeResult.Success) {
-                    val scrapedVersion = result.game.version
+                val result = source.fetchDetail(game.f95Url!!)
+                if (result is SourceResult.Success) {
+                    // Game was actually checked: refresh the timestamp so the
+                    // fetch window applies to the next run.
+                    repository.updateGame(game.copy(lastChecked = now))
+                    val scrapedVersion = result.data.version
                     val currentVersion = game.version
                     if (scrapedVersion != null && scrapedVersion != currentVersion) {
                         updated.add(game)
@@ -67,6 +81,8 @@ class F95ZoneUpdateWorker(
     }
 
     private fun showUpdateNotification(updated: List<Game>) {
+        ensureNotificationChannel()
+
         val title = if (updated.size == 1) {
             "${updated.first().title} has an update"
         } else {
@@ -99,27 +115,45 @@ class F95ZoneUpdateWorker(
         }
     }
 
+    private fun ensureNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManagerCompat.from(applicationContext)
+                .createNotificationChannel(
+                    NotificationChannel(
+                        CHANNEL_ID,
+                        "Game updates",
+                        NotificationManager.IMPORTANCE_DEFAULT,
+                    )
+                )
+        }
+    }
+
     companion object {
         private const val CHANNEL_ID = "game_updates"
         private const val NOTIFICATION_ID = 1001
         private const val WORK_NAME = "f95zone_update_check"
 
-        fun schedule(context: Context) {
+        fun schedule(context: Context, intervalHours: Int) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
             val request = PeriodicWorkRequestBuilder<F95ZoneUpdateWorker>(
-                12, TimeUnit.HOURS,
+                intervalHours.toLong(), TimeUnit.HOURS,
             )
                 .setConstraints(constraints)
                 .build()
 
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
+        }
+
+        /** Cancel the periodic update check (used when the interval is Off). */
+        fun cancel(context: Context) {
+            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME)
         }
     }
 }

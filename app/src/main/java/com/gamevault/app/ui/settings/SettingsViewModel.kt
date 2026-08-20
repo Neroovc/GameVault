@@ -7,6 +7,7 @@ import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.ColorPalette
 import com.gamevault.app.data.settings.SourceRequestPace
 import com.gamevault.app.data.settings.ThemeMode
+import com.gamevault.app.data.settings.UpdateCheckInterval
 import com.gamevault.app.domain.repository.GameRepository
 import com.gamevault.app.ui.collections.CollectionWithCount
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,6 +27,7 @@ data class SettingsUiState(
     val collections: List<CollectionWithCount> = emptyList(),
     val defaultCollectionId: Long? = null,
     val sourceRequestPace: SourceRequestPace = SourceRequestPace.GENTLE,
+    val updateCheckInterval: UpdateCheckInterval = UpdateCheckInterval.HOURS_12,
 )
 
 class SettingsViewModel(
@@ -55,6 +57,7 @@ class SettingsViewModel(
         collectionsWithCount,
         appSettings.defaultCollectionId,
         appSettings.sourceRequestPace,
+        appSettings.updateCheckInterval,
     ) { array ->
         @Suppress("UNCHECKED_CAST")
         SettingsUiState(
@@ -65,6 +68,7 @@ class SettingsViewModel(
             collections = array[4] as List<CollectionWithCount>,
             defaultCollectionId = array[5] as Long?,
             sourceRequestPace = array[6] as SourceRequestPace,
+            updateCheckInterval = array[7] as UpdateCheckInterval,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -99,6 +103,12 @@ class SettingsViewModel(
     fun setSourceRequestPace(pace: SourceRequestPace) {
         viewModelScope.launch {
             appSettings.setSourceRequestPace(pace)
+        }
+    }
+
+    fun setUpdateCheckInterval(interval: UpdateCheckInterval) {
+        viewModelScope.launch {
+            appSettings.setUpdateCheckInterval(interval)
         }
     }
 

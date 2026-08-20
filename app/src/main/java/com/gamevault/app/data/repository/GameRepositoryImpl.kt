@@ -143,8 +143,9 @@ class GameRepositoryImpl(
     }
 
     /**
-     * Scrape fresh metadata for one saved game and persist it only when the
-     * scraped fields actually changed. User-owned fields are never touched.
+     * Scrape fresh metadata for one saved game and persist it when the scraped
+     * fields actually changed or the check timestamp needs refreshing.
+     * User-owned fields are never touched.
      */
     private suspend fun refreshSingleGame(stored: Game, cookie: String?): RefreshOutcome {
         // Re-read the current row: the snapshot taken at pass start may already
@@ -165,10 +166,12 @@ class GameRepositoryImpl(
         return when (result) {
             is ScrapeResult.Success -> {
                 val merged = mergeScrapedFields(current, result.game)
+                // Keep the check timestamp fresh on every successful scrape so
+                // manual refreshes count towards the worker's fetch window.
+                gameDao.updateGame(merged.copy(lastChecked = System.currentTimeMillis()).toEntity())
                 if (merged == current) {
                     RefreshOutcome.UNCHANGED
                 } else {
-                    gameDao.updateGame(merged.toEntity())
                     RefreshOutcome.UPDATED
                 }
             }

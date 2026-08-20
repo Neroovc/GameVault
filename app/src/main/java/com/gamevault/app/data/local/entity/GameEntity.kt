@@ -53,6 +53,9 @@ data class GameEntity(
     @ColumnInfo(name = "last_played")
     val lastPlayed: Long? = null,
 
+    @ColumnInfo(name = "last_checked")
+    val lastChecked: Long? = null,
+
     @ColumnInfo(name = "play_time_minutes")
     val playTimeMinutes: Long = 0,
 
@@ -121,6 +124,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     f95Rating = f95Rating,
     dateAdded = dateAdded,
     lastPlayed = lastPlayed,
+    lastChecked = lastChecked,
     playTimeMinutes = playTimeMinutes,
     inLibrary = inLibrary,
     notes = notes,
@@ -147,6 +151,7 @@ fun Game.toEntity(): GameEntity = GameEntity(
     f95Rating = f95Rating,
     dateAdded = dateAdded,
     lastPlayed = lastPlayed,
+    lastChecked = lastChecked,
     playTimeMinutes = playTimeMinutes,
     inLibrary = inLibrary,
     notes = notes,

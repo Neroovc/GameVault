@@ -76,6 +76,28 @@ enum class SourceRequestPace(
 }
 
 /**
+ * How often the automatic F95Zone update check runs.
+ * [intervalMillis] is null when checks are disabled.
+ */
+enum class UpdateCheckInterval(
+    val value: Int,
+    val displayName: String,
+    val intervalMillis: Long?,
+) {
+    OFF(0, "Off", null),
+    HOURS_6(6, "6 hours", 6L * 3_600_000L),
+    HOURS_12(12, "12 hours", 12L * 3_600_000L),
+    HOURS_24(24, "24 hours", 24L * 3_600_000L),
+    HOURS_48(48, "48 hours", 48L * 3_600_000L),
+    HOURS_168(168, "7 days", 168L * 3_600_000L);
+
+    companion object {
+        fun fromValue(value: Int): UpdateCheckInterval =
+            entries.firstOrNull { it.value == value } ?: HOURS_12
+    }
+}
+
+/**
  * Immutable snapshot of the persisted app settings, used for backup and restore.
  * Nullable fields mean "not exported" or "do not touch on restore".
  */
@@ -94,6 +116,7 @@ data class AppSettingsSnapshot(
     val f95zoneCookie: String? = null,
     val ryuugamesCfCookie: String? = null,
     val sourceRequestPace: Int? = null,
+    val updateCheckInterval: Int? = null,
     val incognitoMode: Boolean? = null,
 )
 
@@ -118,6 +141,7 @@ class AppSettings(private val context: Context) {
         val F95ZONE_COOKIE = stringPreferencesKey("f95zone_cookie")
         val RYUUGAMES_CF_COOKIE = stringPreferencesKey("ryuugames_cf_cookie")
         val SOURCE_REQUEST_PACE = intPreferencesKey("source_request_pace")
+        val UPDATE_CHECK_INTERVAL = intPreferencesKey("update_check_interval")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
     }
 
@@ -324,6 +348,20 @@ class AppSettings(private val context: Context) {
         }
     }
 
+    /** Observe the automatic update check interval. Defaults to HOURS_12. */
+    val updateCheckInterval: Flow<UpdateCheckInterval> = context.dataStore.data.map { prefs ->
+        UpdateCheckInterval.fromValue(
+            prefs[Keys.UPDATE_CHECK_INTERVAL] ?: UpdateCheckInterval.HOURS_12.value
+        )
+    }
+
+    /** Persist the automatic update check interval. */
+    suspend fun setUpdateCheckInterval(interval: UpdateCheckInterval) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.UPDATE_CHECK_INTERVAL] = interval.value
+        }
+    }
+
     /** Observe incognito mode. When enabled, play sessions are NOT recorded. Defaults to false. */
     val incognitoMode: Flow<Boolean> = context.dataStore.data.map { prefs ->
         prefs[Keys.INCOGNITO_MODE] ?: false
@@ -356,6 +394,7 @@ class AppSettings(private val context: Context) {
             f95zoneCookie = if (includeCookies) prefs[Keys.F95ZONE_COOKIE] else null,
             ryuugamesCfCookie = if (includeCookies) prefs[Keys.RYUUGAMES_CF_COOKIE] else null,
             sourceRequestPace = prefs[Keys.SOURCE_REQUEST_PACE],
+            updateCheckInterval = prefs[Keys.UPDATE_CHECK_INTERVAL],
             incognitoMode = prefs[Keys.INCOGNITO_MODE],
         )
     }
@@ -385,6 +424,7 @@ class AppSettings(private val context: Context) {
             snapshot.f95zoneCookie?.let { prefs[Keys.F95ZONE_COOKIE] = it }
             snapshot.ryuugamesCfCookie?.let { prefs[Keys.RYUUGAMES_CF_COOKIE] = it }
             snapshot.sourceRequestPace?.let { prefs[Keys.SOURCE_REQUEST_PACE] = it }
+            snapshot.updateCheckInterval?.let { prefs[Keys.UPDATE_CHECK_INTERVAL] = it }
             snapshot.incognitoMode?.let { prefs[Keys.INCOGNITO_MODE] = it }
         }
     }
