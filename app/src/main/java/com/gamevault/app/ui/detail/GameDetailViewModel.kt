@@ -30,6 +30,7 @@ data class GameDetailUiState(
     val showCollectionPicker: Boolean = false,
     val showEditNotes: Boolean = false,
     val editNotesText: String = "",
+    val incognitoMode: Boolean = false,
 )
 
 class GameDetailViewModel(
@@ -51,6 +52,7 @@ class GameDetailViewModel(
         _showCollectionPicker,
         _showEditNotes,
         _editNotesText,
+        appSettings.incognitoMode,
     ) { array ->
         @Suppress("UNCHECKED_CAST")
         GameDetailUiState(
@@ -64,6 +66,7 @@ class GameDetailViewModel(
             showCollectionPicker = array[5] as Boolean,
             showEditNotes = array[6] as Boolean,
             editNotesText = array[7] as String,
+            incognitoMode = array[8] as Boolean,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -133,30 +136,45 @@ class GameDetailViewModel(
         }
     }
 
-    fun startPlaySession() {
+    fun startPlaySession(routeId: Long?) {
         viewModelScope.launch {
-            // Incognito mode: never record play history.
+            // Incognito mode: never record play history — session rows,
+            // lastPlayed, and playTimeMinutes are all left untouched.
             if (appSettings.incognitoMode.first()) return@launch
+            // Guard: only one open session per game. Without this, rapid
+            // double-taps before the Room flow re-emits would insert two
+            // endTime==null rows and inflate the recorded duration.
+            if (uiState.value.sessions.any { it.endTime == null }) return@launch
+            val now = System.currentTimeMillis()
             repository.saveSession(
                 PlaySession(
                     gameId = gameId,
-                    startTime = System.currentTimeMillis(),
+                    routeId = routeId,
+                    startTime = now,
                 )
             )
+            uiState.value.game?.let { game ->
+                repository.updateGame(game.copy(lastPlayed = now))
+            }
         }
     }
 
-    fun endPlaySession(sessionId: Long) {
+    fun endPlaySession() {
         viewModelScope.launch {
             val sessions = uiState.value.sessions
-            val session = sessions.find { it.id == sessionId } ?: return@launch
+            val session = sessions.firstOrNull { it.endTime == null } ?: return@launch
             val now = System.currentTimeMillis()
             val duration = (now - session.startTime) / 60_000
             val ended = session.copy(endTime = now, durationMinutes = duration)
             repository.updateSession(ended)
 
-            val updatedSessions = sessions.map { if (it.id == sessionId) ended else it }
-            val newTotal = updatedSessions.sumOf { it.durationMinutes ?: 0L }
+            val updatedSessions = sessions.map { if (it.id == session.id) ended else it }
+            // Preserve manually entered play time (setManualPlayTime): only
+            // grow toward the session-derived total, never overwrite a larger
+            // manual value. Otherwise a Stop after a manual adjustment would
+            // deterministically clobber the user's number with the session sum.
+            val currentTotal = uiState.value.game?.playTimeMinutes ?: 0L
+            val newTotal = maxOf(currentTotal, updatedSessions.sumOf { it.durationMinutes ?: 0L })
             repository.updateGamePlayTime(gameId, newTotal)
         }
     }

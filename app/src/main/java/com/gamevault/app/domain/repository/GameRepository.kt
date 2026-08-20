@@ -49,6 +49,7 @@ interface GameRepository {
     // ── Routes ─────────────────────────────────────────────
 
     fun observeRoutesForGame(gameId: Long): Flow<List<GameRoute>>
+    fun observeAllRoutes(): Flow<List<GameRoute>>
     suspend fun getRoutesForGame(gameId: Long): List<GameRoute>
     suspend fun saveRoute(route: GameRoute): Long
     suspend fun updateRoute(route: GameRoute)

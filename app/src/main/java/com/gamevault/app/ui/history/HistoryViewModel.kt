@@ -13,6 +13,14 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+data class HistorySessionItem(
+    val sessionId: Long,
+    val startTime: Long,
+    val endTime: Long?,
+    val durationMinutes: Long?,
+    val routeName: String?,
+)
+
 data class HistoryItem(
     val gameId: Long,
     val gameTitle: String,
@@ -20,6 +28,7 @@ data class HistoryItem(
     val lastPlayed: Long,
     val totalSessions: Int,
     val totalPlayTimeMinutes: Long,
+    val sessions: List<HistorySessionItem>,
 )
 
 data class HistoryUiState(
@@ -36,10 +45,11 @@ class HistoryViewModel(
     val uiState: StateFlow<HistoryUiState> = combine(
         repository.observeAllSessions(),
         repository.observeAllGames(),
-    ) { sessions, games ->
+        repository.observeAllRoutes(),
+    ) { sessions, games, routes ->
         val gameMap = games.associateBy { it.id }
+        val routeMap = routes.associateBy { it.id }
         val grouped = sessions
-            .filter { it.endTime != null }
             .groupBy { it.gameId }
             .map { (gameId, gameSessions) ->
                 val game = gameMap[gameId]
@@ -50,6 +60,17 @@ class HistoryViewModel(
                     lastPlayed = gameSessions.maxOf { it.startTime },
                     totalSessions = gameSessions.size,
                     totalPlayTimeMinutes = gameSessions.sumOf { it.durationMinutes ?: 0L },
+                    sessions = gameSessions
+                        .sortedByDescending { it.startTime }
+                        .map { session ->
+                            HistorySessionItem(
+                                sessionId = session.id,
+                                startTime = session.startTime,
+                                endTime = session.endTime,
+                                durationMinutes = session.durationMinutes,
+                                routeName = session.routeId?.let { routeMap[it]?.name },
+                            )
+                        },
                 )
             }
             .sortedByDescending { it.lastPlayed }

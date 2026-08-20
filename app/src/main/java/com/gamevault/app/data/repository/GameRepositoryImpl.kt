@@ -270,6 +270,9 @@ class GameRepositoryImpl(
     override fun observeRoutesForGame(gameId: Long): Flow<List<GameRoute>> =
         routeDao.getRoutesForGameFlow(gameId).map { list -> list.map { it.toDomainModel() } }
 
+    override fun observeAllRoutes(): Flow<List<GameRoute>> =
+        routeDao.getAllRoutesFlow().map { list -> list.map { it.toDomainModel() } }
+
     override suspend fun getRoutesForGame(gameId: Long): List<GameRoute> =
         routeDao.getRoutesForGame(gameId).map { it.toDomainModel() }
 

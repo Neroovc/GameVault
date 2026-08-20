@@ -152,6 +152,8 @@ class GameVaultBackup(
         allCollections.forEachIndexed { i, c -> collectionIndex[c.id] = i }
         val tagIndex = mutableMapOf<Long, Int>()
         allTags.forEachIndexed { i, t -> tagIndex[t.id] = i }
+        val routeIndex = mutableMapOf<Long, Int>()
+        allRoutes.forEachIndexed { i, r -> routeIndex[r.id] = i }
 
         val includedGroups = mutableListOf<String>().apply {
             if (wantLibrary) add(GROUP_LIBRARY_ENTRIES)
@@ -220,9 +222,7 @@ class GameVaultBackup(
                 allSessions.map { entity ->
                     BackupPlaySession(
                         gameIndex = gameIndex[entity.gameId] ?: 0,
-                        // routeIndex is always null on export — route linkage is
-                        // not preserved (known limitation, left as-is).
-                        routeIndex = null,
+                        routeIndex = entity.routeId?.let { routeIndex[it] },
                         startTime = entity.startTime,
                         endTime = entity.endTime,
                         durationMinutes = entity.durationMinutes,
@@ -386,11 +386,19 @@ class GameVaultBackup(
                     }
                 }
 
-                // Import routes
+                // Import routes — keep list-position → newId alignment. A route
+                // whose gameIndex does not resolve is skipped, but -1 is still
+                // appended so later routeIndex lookups never shift positionally
+                // onto the wrong route (fail closed instead of mislinking).
+                val newRouteIds = mutableListOf<Long>()
                 if (wantHistory) {
                     for (br in backupData.routes) {
-                        val gameId = newGameIds.getOrNull(br.gameIndex)?.takeIf { it > 0 } ?: continue
-                        routeDao.insertRoute(
+                        val gameId = newGameIds.getOrNull(br.gameIndex)?.takeIf { it > 0 }
+                        if (gameId == null) {
+                            newRouteIds.add(-1L)
+                            continue
+                        }
+                        val routeId = routeDao.insertRoute(
                             GameRouteEntity(
                                 gameId = gameId,
                                 name = br.name,
@@ -400,6 +408,7 @@ class GameVaultBackup(
                                 notes = br.notes,
                             )
                         )
+                        newRouteIds.add(routeId)
                     }
                 }
 
@@ -407,9 +416,11 @@ class GameVaultBackup(
                 if (wantHistory) {
                     for (bps in backupData.playSessions) {
                         val gameId = newGameIds.getOrNull(bps.gameIndex)?.takeIf { it > 0 } ?: continue
+                        val routeId = bps.routeIndex?.let { newRouteIds.getOrNull(it)?.takeIf { id -> id > 0 } }
                         sessionDao.insertSession(
                             PlaySessionEntity(
                                 gameId = gameId,
+                                routeId = routeId,
                                 startTime = bps.startTime,
                                 endTime = bps.endTime,
                                 durationMinutes = bps.durationMinutes,

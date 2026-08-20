@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -112,8 +113,12 @@ import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameRoute
 import com.gamevault.app.domain.model.GameStatus
+import com.gamevault.app.domain.model.PlaySession
 import com.gamevault.app.domain.model.RouteStatus
 import com.gamevault.app.domain.model.SourceType
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -152,6 +157,12 @@ fun GameDetailScreen(
     var showTimeDialog by remember { mutableStateOf(false) }
     var showTimeMenu by remember { mutableStateOf(false) }
     var coverViewerOpen by remember { mutableStateOf(false) }
+    var selectedRouteId by remember { mutableStateOf<Long?>(null) }
+    var routeSelectionInitialized by remember { mutableStateOf(false) }
+    if (!routeSelectionInitialized && uiState.routes.isNotEmpty()) {
+        selectedRouteId = uiState.routes.first().id
+        routeSelectionInitialized = true
+    }
 
     Scaffold(
         topBar = {
@@ -245,6 +256,31 @@ fun GameDetailScreen(
                         onPickCollection = viewModel::showCollectionPicker,
                         onAdjustTime = { showTimeMenu = true },
                         playTimeMinutes = uiState.game?.playTimeMinutes ?: 0L,
+                    )
+                }
+
+                // Play session timer: route-linked start/stop recording
+                item {
+                    PlaySessionCard(
+                        routes = uiState.routes,
+                        selectedRouteId = selectedRouteId,
+                        onSelectRoute = { selectedRouteId = it },
+                        activeSession = uiState.sessions.firstOrNull { it.endTime == null },
+                        incognitoMode = uiState.incognitoMode,
+                        onStart = {
+                            if (uiState.incognitoMode) {
+                                scope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        "Incognito mode is on — play session not recorded"
+                                    )
+                                }
+                            } else {
+                                val routeId = selectedRouteId
+                                    ?.takeIf { id -> uiState.routes.any { it.id == id } }
+                                viewModel.startPlaySession(routeId)
+                            }
+                        },
+                        onStop = { viewModel.endPlaySession() },
                     )
                 }
 
@@ -795,10 +831,129 @@ private fun RouteItem(
     }
 }
 
+@Composable
+private fun PlaySessionCard(
+    routes: List<GameRoute>,
+    selectedRouteId: Long?,
+    onSelectRoute: (Long?) -> Unit,
+    activeSession: PlaySession?,
+    incognitoMode: Boolean,
+    onStart: () -> Unit,
+    onStop: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Play session", style = MaterialTheme.typography.titleSmall)
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (activeSession != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Session in progress",
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Text(
+                            text = formatDateTime(activeSession.startTime),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    FilledTonalButton(onClick = onStop) {
+                        Icon(
+                            Icons.Filled.Stop,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text("Stop session", style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+            } else {
+                var menuExpanded by remember { mutableStateOf(false) }
+                Box {
+                    FilledTonalButton(onClick = { menuExpanded = true }) {
+                        Text(
+                            text = routes.firstOrNull { it.id == selectedRouteId }?.name
+                                ?: "No route",
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        Icon(
+                            Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = menuExpanded,
+                        onDismissRequest = { menuExpanded = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("No route") },
+                            onClick = {
+                                menuExpanded = false
+                                onSelectRoute(null)
+                            },
+                        )
+                        routes.forEach { route ->
+                            DropdownMenuItem(
+                                text = { Text(route.name) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSelectRoute(route.id)
+                                },
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Button(
+                    onClick = onStart,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Icon(
+                        Icons.Filled.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text("Start session")
+                }
+
+                if (incognitoMode) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Incognito mode is on — play sessions won't be recorded.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
 private fun formatPlayTime(minutes: Long): String {
     val hours = minutes / 60
     val mins = minutes % 60
     return if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+}
+
+private fun formatDateTime(timestamp: Long): String {
+    val sdf = SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+    return sdf.format(Date(timestamp))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
