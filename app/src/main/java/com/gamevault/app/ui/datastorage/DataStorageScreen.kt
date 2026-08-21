@@ -14,10 +14,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -28,9 +32,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -45,11 +51,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.gamevault.app.data.local.BackupOptions
+import com.gamevault.app.data.settings.AutoBackupFrequency
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+private const val MIN_KEEP_COUNT = 1
+private const val MAX_KEEP_COUNT = 20
 
 private val BackupOptionsSaver = listSaver<BackupOptions, Boolean>(
     save = {
@@ -142,6 +153,15 @@ fun DataStorageScreen(
                     onOptionsChange = { backupOptions = it },
                     onExport = { exportLauncher.launch(backupFileName()) },
                     onImport = { importLauncher.launch(arrayOf("application/json")) },
+                )
+            }
+
+            item {
+                AutoBackupSection(
+                    state = state,
+                    onEnabledChange = viewModel::setAutoBackupEnabled,
+                    onFrequencySelected = viewModel::setAutoBackupFrequency,
+                    onKeepCountChange = viewModel::setAutoBackupKeepCount,
                 )
             }
 
@@ -323,6 +343,115 @@ private fun BackupOptionRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun AutoBackupSection(
+    state: DataStorageUiState,
+    onEnabledChange: (Boolean) -> Unit,
+    onFrequencySelected: (AutoBackupFrequency) -> Unit,
+    onKeepCountChange: (Int) -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Automatic backup", style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "Export a full backup on a schedule",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "Enable automatic backup",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = state.autoBackupEnabled, onCheckedChange = onEnabledChange)
+            }
+
+            if (state.autoBackupEnabled) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Frequency", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                Column(modifier = Modifier.selectableGroup()) {
+                    AutoBackupFrequency.entries.forEach { frequency ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .selectable(
+                                    selected = state.autoBackupFrequency == frequency,
+                                    onClick = { onFrequencySelected(frequency) },
+                                    role = Role.RadioButton,
+                                )
+                                .padding(horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            RadioButton(
+                                selected = state.autoBackupFrequency == frequency,
+                                onClick = null,
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = frequency.displayName,
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Backups to keep", style = MaterialTheme.typography.titleMedium)
+                Spacer(modifier = Modifier.height(4.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { onKeepCountChange(state.autoBackupKeepCount - 1) },
+                        enabled = state.autoBackupKeepCount > MIN_KEEP_COUNT,
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Fewer backups")
+                    }
+                    Text(
+                        text = "${state.autoBackupKeepCount}",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    IconButton(
+                        onClick = { onKeepCountChange(state.autoBackupKeepCount + 1) },
+                        enabled = state.autoBackupKeepCount < MAX_KEEP_COUNT,
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "More backups")
+                    }
+                }
+                Text(
+                    text = "Older automatic backups beyond this count are deleted",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Folder: ${state.autoBackupDirPath ?: "unavailable"}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "Automatic backups live in app storage and are lost if the app is uninstalled. Use Export Backup to save copies outside the app.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

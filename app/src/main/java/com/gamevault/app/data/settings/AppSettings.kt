@@ -98,6 +98,23 @@ enum class UpdateCheckInterval(
 }
 
 /**
+ * How often automatic full backups run while auto-backup is enabled.
+ */
+enum class AutoBackupFrequency(
+    val value: Int,
+    val displayName: String,
+    val intervalDays: Int,
+) {
+    DAILY(0, "Daily", 1),
+    WEEKLY(1, "Weekly", 7);
+
+    companion object {
+        fun fromValue(value: Int): AutoBackupFrequency =
+            entries.firstOrNull { it.value == value } ?: DAILY
+    }
+}
+
+/**
  * Immutable snapshot of the persisted app settings, used for backup and restore.
  * Nullable fields mean "not exported" or "do not touch on restore".
  */
@@ -118,12 +135,21 @@ data class AppSettingsSnapshot(
     val sourceRequestPace: Int? = null,
     val updateCheckInterval: Int? = null,
     val incognitoMode: Boolean? = null,
+    val autoBackupEnabled: Boolean? = null,
+    val autoBackupFrequency: Int? = null,
+    val autoBackupKeepCount: Int? = null,
 )
 
 /**
  * Persisted app settings backed by Jetpack DataStore.
  */
 class AppSettings(private val context: Context) {
+
+    private companion object {
+        const val DEFAULT_AUTO_BACKUP_KEEP_COUNT = 5
+        const val MIN_AUTO_BACKUP_KEEP_COUNT = 1
+        const val MAX_AUTO_BACKUP_KEEP_COUNT = 20
+    }
 
     private object Keys {
         val THEME_MODE = intPreferencesKey("theme_mode")
@@ -143,6 +169,9 @@ class AppSettings(private val context: Context) {
         val SOURCE_REQUEST_PACE = intPreferencesKey("source_request_pace")
         val UPDATE_CHECK_INTERVAL = intPreferencesKey("update_check_interval")
         val INCOGNITO_MODE = booleanPreferencesKey("incognito_mode")
+        val AUTO_BACKUP_ENABLED = booleanPreferencesKey("auto_backup_enabled")
+        val AUTO_BACKUP_FREQUENCY = intPreferencesKey("auto_backup_frequency")
+        val AUTO_BACKUP_KEEP_COUNT = intPreferencesKey("auto_backup_keep_count")
     }
 
     private val LEGACY_SHOW_ENGINE_SOURCE = booleanPreferencesKey("show_engine_source")
@@ -374,6 +403,47 @@ class AppSettings(private val context: Context) {
         }
     }
 
+    /** Observe whether automatic backups are enabled. Defaults to false. */
+    val autoBackupEnabled: Flow<Boolean> = context.dataStore.data.map { prefs ->
+        prefs[Keys.AUTO_BACKUP_ENABLED] ?: false
+    }
+
+    /** Persist the automatic backup toggle. */
+    suspend fun setAutoBackupEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AUTO_BACKUP_ENABLED] = enabled
+        }
+    }
+
+    /** Observe the automatic backup frequency. Defaults to DAILY. */
+    val autoBackupFrequency: Flow<AutoBackupFrequency> = context.dataStore.data.map { prefs ->
+        AutoBackupFrequency.fromValue(
+            prefs[Keys.AUTO_BACKUP_FREQUENCY] ?: AutoBackupFrequency.DAILY.value
+        )
+    }
+
+    /** Persist the automatic backup frequency. */
+    suspend fun setAutoBackupFrequency(frequency: AutoBackupFrequency) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AUTO_BACKUP_FREQUENCY] = frequency.value
+        }
+    }
+
+    /** Observe how many automatic backups are kept. Defaults to 5, clamped to 1..20. */
+    val autoBackupKeepCount: Flow<Int> = context.dataStore.data.map { prefs ->
+        (prefs[Keys.AUTO_BACKUP_KEEP_COUNT] ?: DEFAULT_AUTO_BACKUP_KEEP_COUNT)
+            .coerceIn(MIN_AUTO_BACKUP_KEEP_COUNT, MAX_AUTO_BACKUP_KEEP_COUNT)
+    }
+
+    /** Persist how many automatic backups are kept, clamped to 1..20. */
+    suspend fun setAutoBackupKeepCount(count: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.AUTO_BACKUP_KEEP_COUNT] = count.coerceIn(
+                MIN_AUTO_BACKUP_KEEP_COUNT, MAX_AUTO_BACKUP_KEEP_COUNT,
+            )
+        }
+    }
+
     /**
      * Capture the current persisted values. Cookies are only captured when [includeCookies] is true.
      */
@@ -396,6 +466,9 @@ class AppSettings(private val context: Context) {
             sourceRequestPace = prefs[Keys.SOURCE_REQUEST_PACE],
             updateCheckInterval = prefs[Keys.UPDATE_CHECK_INTERVAL],
             incognitoMode = prefs[Keys.INCOGNITO_MODE],
+            autoBackupEnabled = prefs[Keys.AUTO_BACKUP_ENABLED],
+            autoBackupFrequency = prefs[Keys.AUTO_BACKUP_FREQUENCY],
+            autoBackupKeepCount = prefs[Keys.AUTO_BACKUP_KEEP_COUNT],
         )
     }
 
@@ -426,6 +499,9 @@ class AppSettings(private val context: Context) {
             snapshot.sourceRequestPace?.let { prefs[Keys.SOURCE_REQUEST_PACE] = it }
             snapshot.updateCheckInterval?.let { prefs[Keys.UPDATE_CHECK_INTERVAL] = it }
             snapshot.incognitoMode?.let { prefs[Keys.INCOGNITO_MODE] = it }
+            snapshot.autoBackupEnabled?.let { prefs[Keys.AUTO_BACKUP_ENABLED] = it }
+            snapshot.autoBackupFrequency?.let { prefs[Keys.AUTO_BACKUP_FREQUENCY] = it }
+            snapshot.autoBackupKeepCount?.let { prefs[Keys.AUTO_BACKUP_KEEP_COUNT] = it }
         }
     }
 }

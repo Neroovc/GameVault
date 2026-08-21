@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.decode.GifDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.gamevault.app.data.backup.AutoBackupWorker
 import com.gamevault.app.data.local.GameVaultBackup
 import com.gamevault.app.data.local.GameVaultDatabase
 import com.gamevault.app.data.remote.CloudflareCookieHelper
@@ -39,6 +40,7 @@ class GameVaultApp : Application(), ImageLoaderFactory {
         super.onCreate()
         appContainer = AppContainer(this)
         scheduleUpdateChecks()
+        scheduleAutoBackups()
     }
 
     private fun scheduleUpdateChecks() {
@@ -47,6 +49,18 @@ class GameVaultApp : Application(), ImageLoaderFactory {
             F95ZoneUpdateWorker.cancel(this)
         } else {
             F95ZoneUpdateWorker.schedule(this, interval.value)
+        }
+    }
+
+    private fun scheduleAutoBackups() {
+        val (enabled, frequency) = runBlocking {
+            appContainer.appSettings.autoBackupEnabled.first() to
+                appContainer.appSettings.autoBackupFrequency.first()
+        }
+        if (enabled) {
+            AutoBackupWorker.schedule(this, frequency.intervalDays)
+        } else {
+            AutoBackupWorker.cancel(this)
         }
     }
 

@@ -188,7 +188,11 @@ private fun GameVaultNavHost(
         composable(NavRoutes.DATA_STORAGE) {
             val context = LocalContext.current.applicationContext
             val viewModel: DataStorageViewModel = viewModel(
-                factory = DataStorageViewModel.Factory(appContainer.gameVaultBackup, context),
+                factory = DataStorageViewModel.Factory(
+                    appContainer.gameVaultBackup,
+                    appContainer.appSettings,
+                    context,
+                ),
             )
             DataStorageScreen(
                 viewModel = viewModel,

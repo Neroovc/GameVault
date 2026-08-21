@@ -6,12 +6,17 @@ import android.os.StatFs
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.gamevault.app.data.backup.AutoBackupWorker
 import com.gamevault.app.data.local.BackupOptions
 import com.gamevault.app.data.local.GameVaultBackup
+import com.gamevault.app.data.settings.AppSettings
+import com.gamevault.app.data.settings.AutoBackupFrequency
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class StorageStats(
@@ -25,10 +30,15 @@ data class DataStorageUiState(
     val isImporting: Boolean = false,
     val lastBackupResult: String? = null,
     val storage: StorageStats? = null,
+    val autoBackupEnabled: Boolean = false,
+    val autoBackupFrequency: AutoBackupFrequency = AutoBackupFrequency.DAILY,
+    val autoBackupKeepCount: Int = 5,
+    val autoBackupDirPath: String? = null,
 )
 
 class DataStorageViewModel(
     private val backup: GameVaultBackup,
+    private val appSettings: AppSettings,
     private val context: Context,
 ) : ViewModel() {
 
@@ -47,6 +57,25 @@ class DataStorageViewModel(
                     availableBytes = availableBytes,
                 ),
             )
+        }
+        viewModelScope.launch {
+            combine(
+                appSettings.autoBackupEnabled,
+                appSettings.autoBackupFrequency,
+                appSettings.autoBackupKeepCount,
+            ) { enabled, frequency, keepCount ->
+                Triple(enabled, frequency, keepCount)
+            }.collect { (enabled, frequency, keepCount) ->
+                _uiState.value = _uiState.value.copy(
+                    autoBackupEnabled = enabled,
+                    autoBackupFrequency = frequency,
+                    autoBackupKeepCount = keepCount,
+                )
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val path = AutoBackupWorker.backupDir(context)?.absolutePath
+            _uiState.value = _uiState.value.copy(autoBackupDirPath = path)
         }
     }
 
@@ -97,12 +126,43 @@ class DataStorageViewModel(
         _uiState.value = _uiState.value.copy(lastBackupResult = null)
     }
 
+    fun setAutoBackupEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            appSettings.setAutoBackupEnabled(enabled)
+            // Apply immediately — do not wait for the next process restart.
+            if (enabled) {
+                AutoBackupWorker.schedule(
+                    context,
+                    appSettings.autoBackupFrequency.first().intervalDays,
+                )
+            } else {
+                AutoBackupWorker.cancel(context)
+            }
+        }
+    }
+
+    fun setAutoBackupFrequency(frequency: AutoBackupFrequency) {
+        viewModelScope.launch {
+            appSettings.setAutoBackupFrequency(frequency)
+            if (appSettings.autoBackupEnabled.first()) {
+                AutoBackupWorker.schedule(context, frequency.intervalDays)
+            }
+        }
+    }
+
+    fun setAutoBackupKeepCount(count: Int) {
+        viewModelScope.launch {
+            appSettings.setAutoBackupKeepCount(count)
+        }
+    }
+
     class Factory(
         private val backup: GameVaultBackup,
+        private val appSettings: AppSettings,
         private val context: Context,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-            DataStorageViewModel(backup, context) as T
+            DataStorageViewModel(backup, appSettings, context) as T
     }
 }
