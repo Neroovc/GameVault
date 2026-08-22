@@ -284,7 +284,10 @@ class GameVaultBackup(
         }
     }
 
-    suspend fun importFromJson(json: String): ImportResult {
+    suspend fun importFromJson(
+        json: String,
+        options: RestoreOptions = RestoreOptions.ALL,
+    ): ImportResult {
         return try {
             val backupData = gson.fromJson(json, BackupData::class.java)
                 ?: return ImportResult(false, "Invalid backup file", 0, 0)
@@ -294,12 +297,19 @@ class GameVaultBackup(
             }
 
             // Empty includedGroups means a legacy backup: full destructive restore.
+            // Each gate intersects the file's own groups with the caller's
+            // selective restore choices, so unchecking a group skips its data.
             val fullRestore = backupData.includedGroups.isEmpty()
-            val wantLibrary = fullRestore || GROUP_LIBRARY_ENTRIES in backupData.includedGroups
-            val wantCollections = fullRestore || GROUP_COLLECTIONS in backupData.includedGroups
-            val wantHistory = fullRestore || GROUP_HISTORY in backupData.includedGroups
-            val wantTags = fullRestore || GROUP_TAGS in backupData.includedGroups
-            val wantAppSettings = fullRestore || GROUP_APP_SETTINGS in backupData.includedGroups
+            var wantLibrary = (fullRestore || GROUP_LIBRARY_ENTRIES in backupData.includedGroups) &&
+                options.libraryEntries
+            var wantCollections = (fullRestore || GROUP_COLLECTIONS in backupData.includedGroups) &&
+                options.collections
+            var wantHistory = (fullRestore || GROUP_HISTORY in backupData.includedGroups) &&
+                options.history
+            var wantTags = (fullRestore || GROUP_TAGS in backupData.includedGroups) &&
+                options.tags
+            val wantAppSettings = (fullRestore || GROUP_APP_SETTINGS in backupData.includedGroups) &&
+                options.appSettings
 
             // Fail closed on partial group sets: a Library entries restore is
             // destructive by design (gameDao.deleteAll() FK-cascades through
@@ -313,6 +323,17 @@ class GameVaultBackup(
                     0,
                     0,
                 )
+            }
+
+            // A library restore wipes games and FK-cascades through routes,
+            // sessions, and cross-refs, so its dependent groups always travel
+            // with it even when the caller excluded them from a selective
+            // restore; otherwise excluded device data would be destroyed
+            // without being replaced by the backup's own data.
+            if (wantLibrary) {
+                wantCollections = true
+                wantHistory = true
+                wantTags = true
             }
 
             var gamesInserted = 0
@@ -484,14 +505,18 @@ class GameVaultBackup(
         }
     }
 
-    suspend fun importFromFile(context: Context, uri: Uri): ImportResult {
+    suspend fun importFromFile(
+        context: Context,
+        uri: Uri,
+        options: RestoreOptions = RestoreOptions.ALL,
+    ): ImportResult {
         return try {
             val reader = BufferedReader(
                 InputStreamReader(context.contentResolver.openInputStream(uri))
             )
             val json = reader.readText()
             reader.close()
-            importFromJson(json)
+            importFromJson(json, options)
         } catch (e: Exception) {
             ImportResult(false, "Import failed: ${e.message}", 0, 0)
         }

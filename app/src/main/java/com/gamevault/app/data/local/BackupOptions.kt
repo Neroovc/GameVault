@@ -33,3 +33,22 @@ data class BackupOptions(
         val ALL = BackupOptions()
     }
 }
+
+/**
+ * Options controlling which data groups a restore applies to the device.
+ * Each flag intersects with the groups actually present in the backup file,
+ * so unchecking a group skips it even when the file contains its data.
+ */
+data class RestoreOptions(
+    val libraryEntries: Boolean = true,
+    val collections: Boolean = true,
+    val history: Boolean = true,
+    val tags: Boolean = true,
+    val appSettings: Boolean = true,
+) {
+    fun canRestore(): Boolean = libraryEntries || collections || history || tags || appSettings
+
+    companion object {
+        val ALL = RestoreOptions()
+    }
+}

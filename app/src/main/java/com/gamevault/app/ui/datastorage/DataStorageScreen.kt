@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -38,6 +39,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.gamevault.app.data.local.BackupOptions
+import com.gamevault.app.data.local.RestoreOptions
 import com.gamevault.app.data.settings.AutoBackupFrequency
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -88,6 +91,28 @@ private val BackupOptionsSaver = listSaver<BackupOptions, Boolean>(
     },
 )
 
+private val RestoreOptionsSaver = listSaver<RestoreOptions, Boolean>(
+    save = {
+        listOf(
+            it.libraryEntries,
+            it.collections,
+            it.history,
+            it.tags,
+            it.appSettings,
+        )
+    },
+    restore = {
+        val library = it[0]
+        RestoreOptions(
+            libraryEntries = library,
+            collections = library,
+            history = library,
+            tags = library,
+            appSettings = it[4],
+        )
+    },
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DataStorageScreen(
@@ -100,6 +125,10 @@ fun DataStorageScreen(
     var backupOptions by rememberSaveable(stateSaver = BackupOptionsSaver) {
         mutableStateOf(BackupOptions.ALL)
     }
+    var restoreOptions by rememberSaveable(stateSaver = RestoreOptionsSaver) {
+        mutableStateOf(RestoreOptions.ALL)
+    }
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
@@ -110,7 +139,19 @@ fun DataStorageScreen(
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
-        uri?.let { viewModel.importBackup(context, it) }
+        uri?.let { pendingImportUri = it }
+    }
+
+    pendingImportUri?.let { importUri ->
+        RestoreOptionsDialog(
+            options = restoreOptions,
+            onOptionsChange = { restoreOptions = it },
+            onConfirm = {
+                viewModel.importBackup(context, importUri, restoreOptions)
+                pendingImportUri = null
+            },
+            onDismiss = { pendingImportUri = null },
+        )
     }
 
     LaunchedEffect(state.lastBackupResult) {
@@ -306,6 +347,141 @@ private fun BackupSection(
                 Icon(Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(if (isImporting) "Importing..." else "Import Backup")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RestoreOptionsDialog(
+    options: RestoreOptions,
+    onOptionsChange: (RestoreOptions) -> Unit,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Restore backup") },
+        text = {
+            Column {
+                Text(
+                    "Choose which groups to restore from this backup",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text("Library", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                RestoreOptionRow(
+                    label = "Library entries",
+                    captions = listOf("Games, changelog, and download links"),
+                    checked = options.libraryEntries,
+                    enabled = true,
+                    onCheckedChange = { checked ->
+                        // A library restore wipes games and cascades through
+                        // collections/history/tags, so dependents travel with
+                        // it (mirrors the export lock and backend forcing).
+                        onOptionsChange(
+                            if (checked) {
+                                options.copy(
+                                    libraryEntries = true,
+                                    collections = true,
+                                    history = true,
+                                    tags = true,
+                                )
+                            } else {
+                                options.copy(
+                                    libraryEntries = false,
+                                    collections = false,
+                                    history = false,
+                                    tags = false,
+                                )
+                            }
+                        )
+                    },
+                )
+                val libraryLockNote = if (options.libraryEntries) {
+                    "Restored with Library entries"
+                } else {
+                    "Requires Library entries"
+                }
+                RestoreOptionRow(
+                    label = "Collections",
+                    captions = listOf(libraryLockNote),
+                    checked = options.libraryEntries,
+                    enabled = false,
+                    onCheckedChange = null,
+                )
+                RestoreOptionRow(
+                    label = "Play history",
+                    captions = listOf(libraryLockNote),
+                    checked = options.libraryEntries,
+                    enabled = false,
+                    onCheckedChange = null,
+                )
+                RestoreOptionRow(
+                    label = "Tags",
+                    captions = listOf(libraryLockNote),
+                    checked = options.libraryEntries,
+                    enabled = false,
+                    onCheckedChange = null,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Settings", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                RestoreOptionRow(
+                    label = "App settings",
+                    captions = listOf("Theme, palette, source preferences, and more"),
+                    checked = options.appSettings,
+                    enabled = true,
+                    onCheckedChange = { checked -> onOptionsChange(options.copy(appSettings = checked)) },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onConfirm, enabled = options.canRestore()) {
+                Text("Restore")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        },
+    )
+}
+
+@Composable
+private fun RestoreOptionRow(
+    label: String,
+    captions: List<String> = emptyList(),
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: ((Boolean) -> Unit)?,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+        Column(modifier = Modifier.padding(start = 4.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (enabled) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+            captions.forEach { caption ->
+                Text(
+                    text = caption,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }

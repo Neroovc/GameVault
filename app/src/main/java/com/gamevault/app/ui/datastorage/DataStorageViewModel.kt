@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.gamevault.app.data.backup.AutoBackupWorker
 import com.gamevault.app.data.local.BackupOptions
 import com.gamevault.app.data.local.GameVaultBackup
+import com.gamevault.app.data.local.RestoreOptions
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.AutoBackupFrequency
 import kotlinx.coroutines.Dispatchers
@@ -97,11 +98,15 @@ class DataStorageViewModel(
         }
     }
 
-    fun importBackup(context: Context, uri: Uri) {
+    fun importBackup(
+        context: Context,
+        uri: Uri,
+        options: RestoreOptions = RestoreOptions.ALL,
+    ) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isImporting = true)
             try {
-                val result = backup.importFromFile(context, uri)
+                val result = backup.importFromFile(context, uri, options)
                 _uiState.value = _uiState.value.copy(
                     isImporting = false,
                     lastBackupResult = if (result.success) {
