@@ -7,6 +7,7 @@ import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.domain.model.Game
 import com.gamevault.app.domain.model.GameStatus
 import com.gamevault.app.domain.model.SourceType
+import com.gamevault.app.domain.model.Tag
 import com.gamevault.app.data.settings.AppSettings
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.data.settings.RatingStyle
@@ -160,6 +161,7 @@ class LibraryViewModel(
     private var refreshJob: Job? = null
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
+    val tags: StateFlow<List<Tag>> = repository.observeAllTags()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** Games flagged by the update worker as having a newer version upstream. */
@@ -421,6 +423,10 @@ class LibraryViewModel(
 
     fun addGamesToCollection(gameIds: List<Long>, collectionId: Long) {
         viewModelScope.launch { repository.addGamesToCollection(gameIds, collectionId) }
+    }
+
+    fun addTagsToGames(gameIds: List<Long>, tagId: Long) {
+        viewModelScope.launch { repository.addTagsToGames(gameIds, tagId) }
     }
 
     fun deleteGames(gameIds: List<Long>) {

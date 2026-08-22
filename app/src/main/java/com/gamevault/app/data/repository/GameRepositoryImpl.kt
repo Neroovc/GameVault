@@ -270,6 +270,11 @@ class GameRepositoryImpl(
         gameCollectionDao.insertBulk(crossRefs)
     }
 
+    override suspend fun addTagsToGames(gameIds: List<Long>, tagId: Long) {
+        val crossRefs = gameIds.map { GameTagCrossRef(gameId = it, tagId = tagId) }
+        gameTagDao.insertBulk(crossRefs)
+    }
+
     override suspend fun deleteGames(gameIds: List<Long>) {
         gameDao.deleteGamesBulk(gameIds)
     }

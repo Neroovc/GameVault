@@ -12,6 +12,9 @@ interface GameTagDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(crossRef: GameTagCrossRef)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertBulk(crossRefs: List<GameTagCrossRef>)
+
     @Query("SELECT * FROM game_tag_cross_ref")
     suspend fun getAll(): List<GameTagCrossRef>
 

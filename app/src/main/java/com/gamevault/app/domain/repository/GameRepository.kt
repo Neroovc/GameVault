@@ -78,6 +78,7 @@ interface GameRepository {
 
     suspend fun updateGameStatusBulk(gameIds: List<Long>, status: GameStatus)
     suspend fun addGamesToCollection(gameIds: List<Long>, collectionId: Long)
+    suspend fun addTagsToGames(gameIds: List<Long>, tagId: Long)
     suspend fun deleteGames(gameIds: List<Long>)
 
     fun observeAllCollections(): Flow<List<Collection>>

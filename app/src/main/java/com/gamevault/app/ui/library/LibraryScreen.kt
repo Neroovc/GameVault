@@ -120,6 +120,7 @@ fun LibraryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val collections by viewModel.collections.collectAsState()
+    val tags by viewModel.tags.collectAsState()
     val updateAvailableCount by viewModel.updateAvailableCount.collectAsState()
     val selectedIds by selectionViewModel.selectedGameIds.collectAsState()
     val isSelectionMode by selectionViewModel.isSelectionMode.collectAsState()
@@ -133,6 +134,7 @@ fun LibraryScreen(
     var showSheet by remember { mutableStateOf(false) }
     var showBulkStatusDialog by remember { mutableStateOf(false) }
     var showBulkCollectionDialog by remember { mutableStateOf(false) }
+    var showBulkTagDialog by remember { mutableStateOf(false) }
     var showBulkDeleteDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -270,6 +272,7 @@ fun LibraryScreen(
                 SelectionBottomBar(
                     onStatusChange = { showBulkStatusDialog = true },
                     onAddToCollection = { showBulkCollectionDialog = true },
+                    onAddTag = { showBulkTagDialog = true },
                     onDelete = { showBulkDeleteDialog = true },
                 )
             }
@@ -434,9 +437,29 @@ fun LibraryScreen(
             selectedCount = selectedCount,
             onDismiss = { showBulkCollectionDialog = false },
             onCollectionSelected = { collectionId ->
+                val name = collections.firstOrNull { it.id == collectionId }?.name ?: "collection"
                 viewModel.addGamesToCollection(selectedIds.toList(), collectionId)
+                scope.launch {
+                    snackbarHostState.showSnackbar("Added $selectedCount games to $name")
+                }
                 selectionViewModel.clearSelection()
                 showBulkCollectionDialog = false
+            },
+        )
+    }
+    if (showBulkTagDialog) {
+        BulkTagDialog(
+            tags = tags,
+            selectedCount = selectedCount,
+            onDismiss = { showBulkTagDialog = false },
+            onTagSelected = { tagId ->
+                val name = tags.firstOrNull { it.id == tagId }?.name ?: "tag"
+                viewModel.addTagsToGames(selectedIds.toList(), tagId)
+                scope.launch {
+                    snackbarHostState.showSnackbar("Tagged $selectedCount games with $name")
+                }
+                selectionViewModel.clearSelection()
+                showBulkTagDialog = false
             },
         )
     }
@@ -1147,6 +1170,7 @@ private fun SelectionTopAppBar(
 private fun SelectionBottomBar(
     onStatusChange: () -> Unit,
     onAddToCollection: () -> Unit,
+    onAddTag: () -> Unit,
     onDelete: () -> Unit,
 ) {
     BottomAppBar(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
@@ -1160,6 +1184,7 @@ private fun SelectionBottomBar(
                 Spacer(Modifier.width(4.dp))
                 Text("Collection")
             }
+            Button(onClick = onAddTag) { Text("Tag") }
             Button(
                 onClick = onDelete,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -1217,6 +1242,36 @@ private fun BulkCollectionDialog(
                             onClick = { onCollectionSelected(collection.id) },
                             modifier = Modifier.fillMaxWidth(),
                         ) { Text(collection.name, modifier = Modifier.fillMaxWidth()) }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}
+
+@Composable
+private fun BulkTagDialog(
+    tags: List<Tag>,
+    selectedCount: Int,
+    onDismiss: () -> Unit,
+    onTagSelected: (Long) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Tag $selectedCount games with:") },
+        text = {
+            if (tags.isEmpty()) {
+                Text("No tags yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column {
+                    tags.forEach { tag ->
+                        TextButton(
+                            onClick = { onTagSelected(tag.id) },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(tag.name, modifier = Modifier.fillMaxWidth()) }
                     }
                 }
             }
