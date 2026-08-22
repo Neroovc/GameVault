@@ -105,6 +105,7 @@ import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.data.settings.RatingStyle
 import com.gamevault.app.data.settings.StatusStyle
 import com.gamevault.app.domain.model.GameStatus
+import com.gamevault.app.domain.model.Tag
 import com.gamevault.app.ui.components.GameCard
 import com.gamevault.app.ui.components.statusColor
 import kotlinx.coroutines.delay

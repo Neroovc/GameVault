@@ -161,6 +161,7 @@ class LibraryViewModel(
     private var refreshJob: Job? = null
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val tags: StateFlow<List<Tag>> = repository.observeAllTags()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
