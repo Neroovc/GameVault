@@ -86,6 +86,11 @@ data class GameEntity(
 
     @ColumnInfo(name = "updates_muted", defaultValue = "0")
     val updatesMuted: Boolean = false,
+
+    // Consecutive update-worker checks that returned no version change.
+    // Drives adaptive fetch pacing: effective interval = base * 2^min(emptyChecks, 3).
+    @ColumnInfo(name = "empty_checks", defaultValue = "0")
+    val emptyChecks: Int = 0,
 )
 
 private val devLinksJsonType = object : TypeToken<List<String>>() {}.type
@@ -142,6 +147,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     downloadLinks = parseDownloadLinks(downloadLinks),
     updateAvailable = updateAvailable,
     updatesMuted = updatesMuted,
+    emptyChecks = emptyChecks,
 )
 
 fun Game.toEntity(): GameEntity = GameEntity(
@@ -171,4 +177,5 @@ fun Game.toEntity(): GameEntity = GameEntity(
     downloadLinks = serializeDownloadLinks(downloadLinks),
     updateAvailable = updateAvailable,
     updatesMuted = updatesMuted,
+    emptyChecks = emptyChecks,
 )

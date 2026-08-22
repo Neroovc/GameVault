@@ -44,11 +44,15 @@ class F95ZoneUpdateWorker(
         val windowMillis = interval.intervalMillis ?: return Result.success()
         val now = System.currentTimeMillis()
 
-        // Find tracked F95Zone games not yet checked within the fetch window
+        // Adaptive fetch pacing (Mihon-style): each consecutive check that finds
+        // no version change doubles the effective interval, up to 8x base
+        // (2^min(emptyChecks, 3)). A detected change resets the pace.
         val trackedGames = repository.getAllGames().filter { game ->
             if (game.sourceType != SourceType.F95ZONE || game.f95Url == null) return@filter false
             val lastChecked = game.lastChecked ?: return@filter true
-            now - lastChecked >= windowMillis
+            val backoffShift = minOf(game.emptyChecks.coerceAtLeast(0), 3)
+            val effectiveWindowMillis = windowMillis shl backoffShift
+            now - lastChecked >= effectiveWindowMillis
         }
 
         if (trackedGames.isEmpty()) return Result.success()
@@ -64,9 +68,14 @@ class F95ZoneUpdateWorker(
                     val scrapedVersion = result.data.version
                     val currentVersion = game.version
                     val hasNewerVersion = scrapedVersion != null && scrapedVersion != currentVersion
+                    // Detected change resets the backoff; an unchanged check
+                    // increments it (persisted in the same update as lastChecked).
+                    val nextEmptyChecks =
+                        if (hasNewerVersion) 0 else (game.emptyChecks.coerceAtLeast(0) + 1)
                     repository.updateGame(
                         game.copy(
                             lastChecked = now,
+                            emptyChecks = nextEmptyChecks,
                             updateAvailable = if (hasNewerVersion) true else game.updateAvailable,
                         )
                     )

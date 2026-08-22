@@ -30,6 +30,8 @@ data class Game(
     val downloadLinks: List<String> = emptyList(),
     val updateAvailable: Boolean = false,
     val updatesMuted: Boolean = false,
+    // Consecutive checks with no version change; backs adaptive fetch pacing (capped at 3).
+    val emptyChecks: Int = 0,
     val routes: List<GameRoute> = emptyList(),
     val tags: List<Tag> = emptyList(),
     val collections: List<Collection> = emptyList(),
