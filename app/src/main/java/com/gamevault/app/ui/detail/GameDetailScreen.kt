@@ -210,6 +210,21 @@ fun GameDetailScreen(
                                     viewModel.showCollectionPicker()
                                 },
                             )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        if (uiState.game?.updatesMuted == true) {
+                                            "Unmute update notifications"
+                                        } else {
+                                            "Mute update notifications"
+                                        }
+                                    )
+                                },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.toggleUpdatesMuted()
+                                },
+                            )
                         }
                     }
                 },

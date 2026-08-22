@@ -259,6 +259,8 @@ class GameRepositoryImpl(
 
     override suspend fun clearUpdateAvailable(gameId: Long) = gameDao.clearUpdateAvailable(gameId)
 
+    override suspend fun setUpdatesMuted(gameId: Long, muted: Boolean) = gameDao.setUpdatesMuted(gameId, muted)
+
     override suspend fun updateGameStatusBulk(gameIds: List<Long>, status: GameStatus) {
         gameDao.updateGameStatusBulk(gameIds, status.name)
     }

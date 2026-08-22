@@ -79,8 +79,11 @@ class F95ZoneUpdateWorker(
             }
         }
 
-        if (updated.isNotEmpty()) {
-            showUpdateNotification(updated)
+        // Muted games are still checked and flagged above; they are only
+        // excluded from the notification batch.
+        val notified = updated.filter { !it.updatesMuted }
+        if (notified.isNotEmpty()) {
+            showUpdateNotification(notified)
         }
 
         return Result.success()

@@ -72,6 +72,9 @@ interface GameDao {
     @Query("UPDATE games SET update_available = 0 WHERE id = :gameId")
     suspend fun clearUpdateAvailable(gameId: Long)
 
+    @Query("UPDATE games SET updates_muted = :muted WHERE id = :gameId")
+    suspend fun setUpdatesMuted(gameId: Long, muted: Boolean)
+
     @Query("UPDATE games SET in_library = :inLibrary WHERE id = :gameId")
     suspend fun updateGameLibraryState(gameId: Long, inLibrary: Boolean)
 

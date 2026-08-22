@@ -48,6 +48,7 @@ interface GameRepository {
     suspend fun getGameCount(): Int
     fun observeUpdateAvailableCount(): Flow<Int>
     suspend fun clearUpdateAvailable(gameId: Long)
+    suspend fun setUpdatesMuted(gameId: Long, muted: Boolean)
 
     // ── Routes ─────────────────────────────────────────────
 

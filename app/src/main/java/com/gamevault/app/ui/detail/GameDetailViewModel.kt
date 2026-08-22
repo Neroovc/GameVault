@@ -87,6 +87,13 @@ class GameDetailViewModel(
         }
     }
 
+    fun toggleUpdatesMuted() {
+        viewModelScope.launch {
+            val current = uiState.value.game ?: return@launch
+            repository.setUpdatesMuted(gameId, !current.updatesMuted)
+        }
+    }
+
     fun updatePersonalRating(rating: Float) {
         viewModelScope.launch {
             val current = uiState.value.game ?: return@launch
