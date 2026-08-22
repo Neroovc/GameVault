@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BookmarkAdded
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.outlined.Gamepad
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -528,6 +529,28 @@ fun SourceBrowseScreen(
     // System back returns from the detail view to the results.
     BackHandler(enabled = detailGame != null) { detailGame = null }
 
+    // Duplicate warning: a game with the same f95Url is already in the
+    // library. Open jumps to the stored copy's detail screen; Cancel keeps
+    // the preview open.
+    var duplicateExisting by remember { mutableStateOf<Game?>(null) }
+    duplicateExisting?.let { duplicate ->
+        AlertDialog(
+            onDismissRequest = { duplicateExisting = null },
+            title = { Text("Already in library") },
+            text = { Text("\"${duplicate.title}\" is already in your library.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    duplicateExisting = null
+                    detailGame = null
+                    onNavigateToDetail(duplicate.id)
+                }) { Text("Open") }
+            },
+            dismissButton = {
+                TextButton(onClick = { duplicateExisting = null }) { Text("Cancel") }
+            },
+        )
+    }
+
     val game = detailGame
     if (game != null) {
         // Reuse the library's detail screen in preview mode (same window as a
@@ -547,11 +570,11 @@ fun SourceBrowseScreen(
                         // REPLACE, so re-adding a scraped game would delete the
                         // existing row and cascade its children (routes, play
                         // sessions, cross-refs, notes, status, rating).
-                        val existing = game.f95Url?.let { gameRepository.getGameBySourceUrl(it) }
+                        val existing = game.f95Url?.let { gameRepository.getGameByF95Url(it) }
                             ?: game.sourceUrl?.let { gameRepository.getGameBySourceUrl(it) }
                         if (existing != null) {
                             if (existing.inLibrary) {
-                                snackbarMessage = "Already in library"
+                                duplicateExisting = existing
                             } else {
                                 // Row survives unmarking, so re-adding must not
                                 // re-insert (REPLACE would nuke children). Flip

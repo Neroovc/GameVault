@@ -87,6 +87,9 @@ class GameRepositoryImpl(
     override suspend fun getGameBySourceUrl(url: String): Game? =
         gameDao.getGameBySourceUrl(url)?.toDomainModel()
 
+    override suspend fun getGameByF95Url(url: String): Game? =
+        gameDao.getGameByF95Url(url)?.toDomainModel()
+
     override suspend fun saveGame(game: Game): Long {
         val gameId = gameDao.insertGame(game.toEntity())
 

@@ -36,6 +36,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Casino
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CollectionsBookmark
@@ -231,6 +232,25 @@ fun LibraryScreen(
                         if (!searchExpanded) {
                             IconButton(onClick = { searchExpanded = !searchExpanded }) {
                                 Icon(Icons.Default.Search, contentDescription = "Search")
+                            }
+                            IconButton(onClick = {
+                                // Same source the active page renders: cached
+                                // page data when available, else the live
+                                // filtered list (search or settled page).
+                                val tabKey = uiState.stripTabs.getOrNull(pagerState.settledPage)?.key ?: ""
+                                val visibleIds = (pageData[tabKey]?.flat ?: uiState.displayItems.flat)
+                                    .filterIsInstance<DisplayItem.GameItem>()
+                                    .map { it.game.id }
+                                val randomId = visibleIds.randomOrNull()
+                                if (randomId == null) {
+                                    scope.launch {
+                                        snackbarHostState.showSnackbar("No games in library")
+                                    }
+                                } else {
+                                    onGameClick(randomId)
+                                }
+                            }) {
+                                Icon(Icons.Default.Casino, contentDescription = "Random game")
                             }
                             IconButton(onClick = { showSheet = true }) {
                                 Icon(

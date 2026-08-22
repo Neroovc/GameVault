@@ -37,6 +37,7 @@ interface GameRepository {
     suspend fun getAllGames(): List<Game>
     suspend fun getGameById(gameId: Long): Game?
     suspend fun getGameBySourceUrl(url: String): Game?
+    suspend fun getGameByF95Url(url: String): Game?
     suspend fun saveGame(game: Game): Long
     suspend fun updateGame(game: Game)
     suspend fun refreshSavedGames(): LibraryRefreshResult

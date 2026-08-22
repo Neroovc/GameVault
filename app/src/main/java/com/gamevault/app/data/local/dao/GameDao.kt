@@ -87,6 +87,9 @@ interface GameDao {
     @Query("SELECT * FROM games WHERE f95_url = :url OR source_url = :url LIMIT 1")
     suspend fun getGameBySourceUrl(url: String): GameEntity?
 
+    @Query("SELECT * FROM games WHERE f95_url = :url LIMIT 1")
+    suspend fun getGameByF95Url(url: String): GameEntity?
+
     @Query("DELETE FROM games WHERE id IN (:gameIds)")
     suspend fun deleteGamesBulk(gameIds: List<Long>)
 
