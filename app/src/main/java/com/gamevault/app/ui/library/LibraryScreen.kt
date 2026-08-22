@@ -2,6 +2,7 @@ package com.gamevault.app.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -97,6 +98,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.gamevault.app.R
 import com.gamevault.app.domain.model.Collection
 import com.gamevault.app.data.settings.GridMode
 import com.gamevault.app.data.settings.RatingStyle
@@ -117,6 +119,7 @@ fun LibraryScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val collections by viewModel.collections.collectAsState()
+    val updateAvailableCount by viewModel.updateAvailableCount.collectAsState()
     val selectedIds by selectionViewModel.selectedGameIds.collectAsState()
     val isSelectionMode by selectionViewModel.isSelectionMode.collectAsState()
     val selectedCount by selectionViewModel.selectedCount.collectAsState()
@@ -203,6 +206,10 @@ fun LibraryScreen(
                                 CountBadge(
                                     count = uiState.stripTabs.firstOrNull()?.count ?: 0,
                                 )
+                                if (updateAvailableCount > 0) {
+                                    Spacer(Modifier.width(8.dp))
+                                    UpdateAvailableBadge(count = updateAvailableCount)
+                                }
                             }
                         }
                     },
@@ -570,6 +577,21 @@ private fun CountBadge(
                 horizontal = horizontalPadding,
                 vertical = verticalPadding,
             ),
+        )
+    }
+}
+
+@Composable
+private fun UpdateAvailableBadge(count: Int) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+    ) {
+        Text(
+            text = stringResource(R.string.updates_available_badge, count),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
     }
 }

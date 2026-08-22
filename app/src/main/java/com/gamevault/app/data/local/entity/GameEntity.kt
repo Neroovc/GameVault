@@ -80,6 +80,9 @@ data class GameEntity(
 
     @ColumnInfo(name = "download_links")
     val downloadLinks: String? = null,   // JSON-serialized List<String>, null = none
+
+    @ColumnInfo(name = "update_available")
+    val updateAvailable: Boolean = false,
 )
 
 private val devLinksJsonType = object : TypeToken<List<String>>() {}.type
@@ -134,6 +137,7 @@ fun GameEntity.toDomainModel(): Game = Game(
     changelog = changelog,
     devLinks = parseDevLinks(devLinks),
     downloadLinks = parseDownloadLinks(downloadLinks),
+    updateAvailable = updateAvailable,
 )
 
 fun Game.toEntity(): GameEntity = GameEntity(
@@ -161,4 +165,5 @@ fun Game.toEntity(): GameEntity = GameEntity(
     changelog = changelog,
     devLinks = serializeDevLinks(devLinks),
     downloadLinks = serializeDownloadLinks(downloadLinks),
+    updateAvailable = updateAvailable,
 )

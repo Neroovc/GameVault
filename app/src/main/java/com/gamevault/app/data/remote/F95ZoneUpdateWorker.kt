@@ -61,10 +61,16 @@ class F95ZoneUpdateWorker(
                 if (result is SourceResult.Success) {
                     // Game was actually checked: refresh the timestamp so the
                     // fetch window applies to the next run.
-                    repository.updateGame(game.copy(lastChecked = now))
                     val scrapedVersion = result.data.version
                     val currentVersion = game.version
-                    if (scrapedVersion != null && scrapedVersion != currentVersion) {
+                    val hasNewerVersion = scrapedVersion != null && scrapedVersion != currentVersion
+                    repository.updateGame(
+                        game.copy(
+                            lastChecked = now,
+                            updateAvailable = if (hasNewerVersion) true else game.updateAvailable,
+                        )
+                    )
+                    if (hasNewerVersion) {
                         updated.add(game)
                     }
                 }

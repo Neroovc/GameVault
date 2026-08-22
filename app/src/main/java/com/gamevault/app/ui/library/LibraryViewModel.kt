@@ -59,6 +59,7 @@ enum class SortOrder(val displayName: String) {
     DATE_ADDED_DESC("Recently Added"),
     DATE_ADDED_ASC("Oldest First"),
     LAST_PLAYED("Last Played"),
+    RECENTLY_UPDATED("Recently Updated"),
     TITLE_ASC("Title A-Z"),
     TITLE_DESC("Title Z-A"),
     RATING("Rating"),
@@ -160,6 +161,10 @@ class LibraryViewModel(
 
     val collections: StateFlow<List<Collection>> = repository.observeAllCollections()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Games flagged by the update worker as having a newer version upstream. */
+    val updateAvailableCount: StateFlow<Int> = repository.observeUpdateAvailableCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0)
 
     // Raw library — strip tab counts must reflect the whole shelf, not the
     // currently filtered grid.
@@ -569,6 +574,11 @@ class LibraryViewModel(
             SortOrder.DATE_ADDED_DESC -> games.sortedByDescending { it.dateAdded }
             SortOrder.DATE_ADDED_ASC -> games.sortedBy { it.dateAdded }
             SortOrder.LAST_PLAYED -> games.sortedByDescending { it.lastPlayed ?: 0L }
+            SortOrder.RECENTLY_UPDATED ->
+                games.sortedWith(
+                    compareByDescending<Game> { it.updateAvailable }
+                        .thenByDescending { it.lastChecked ?: 0L }
+                )
             SortOrder.TITLE_ASC -> games.sortedBy { it.title.lowercase() }
             SortOrder.TITLE_DESC -> games.sortedByDescending { it.title.lowercase() }
             SortOrder.RATING -> games.sortedByDescending { it.personalRating ?: 0f }

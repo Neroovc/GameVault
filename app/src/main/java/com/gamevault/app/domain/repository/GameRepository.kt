@@ -45,6 +45,8 @@ interface GameRepository {
     suspend fun setGameLocalCover(gameId: Long, path: String?)
     suspend fun deleteGame(gameId: Long)
     suspend fun getGameCount(): Int
+    fun observeUpdateAvailableCount(): Flow<Int>
+    suspend fun clearUpdateAvailable(gameId: Long)
 
     // ── Routes ─────────────────────────────────────────────
 

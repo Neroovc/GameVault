@@ -66,6 +66,12 @@ interface GameDao {
     @Query("SELECT COUNT(*) FROM games WHERE in_library = 1")
     suspend fun getGameCount(): Int
 
+    @Query("SELECT COUNT(*) FROM games WHERE update_available = 1")
+    fun getUpdateAvailableCountFlow(): Flow<Int>
+
+    @Query("UPDATE games SET update_available = 0 WHERE id = :gameId")
+    suspend fun clearUpdateAvailable(gameId: Long)
+
     @Query("UPDATE games SET in_library = :inLibrary WHERE id = :gameId")
     suspend fun updateGameLibraryState(gameId: Long, inLibrary: Boolean)
 

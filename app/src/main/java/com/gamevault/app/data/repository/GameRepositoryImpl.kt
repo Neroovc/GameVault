@@ -252,6 +252,10 @@ class GameRepositoryImpl(
 
     override suspend fun getGameCount(): Int = gameDao.getGameCount()
 
+    override fun observeUpdateAvailableCount(): Flow<Int> = gameDao.getUpdateAvailableCountFlow()
+
+    override suspend fun clearUpdateAvailable(gameId: Long) = gameDao.clearUpdateAvailable(gameId)
+
     override suspend fun updateGameStatusBulk(gameIds: List<Long>, status: GameStatus) {
         gameDao.updateGameStatusBulk(gameIds, status.name)
     }

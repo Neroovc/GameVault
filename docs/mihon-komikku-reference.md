@@ -1,239 +1,181 @@
-# Mihon & Komikku Feature Reference — GameVault Implementation Base
+# Mihon & Komikku Complete Feature Reference — GameVault Adaptation Base (v2)
 
-Reference document distilled from the Mihon and Komikku codebases (shallow clones at
-`/data/data/com.termux/files/usr/tmp/opencode/ref/mihon` and `.../ref/komikku`, state as of 2026-08).
-Purpose: base for implementing (1) library pull-to-refresh / library update and
-(2) customizable backup creation in GameVault.
+Distilled from shallow clones `/data/data/com.termux/files/usr/tmp/opencode/ref/{mihon,komikku}` (state 2026-08).
+Supersedes the previous 2-feature reference; integrates its backup deep-dive. Purpose: full inventory of BOTH apps' features with exact paths/settings keys, plus the GameVault adaptation map (§16).
 
 ---
 
-## 1. Library Pull-to-Refresh / Update Gesture
+## 1. Library screen & management
 
-### 1.1 Shared pattern (both apps)
+- Display modes — CompactGrid / ComfortableGrid / List / CoverOnlyGrid("cozy"); grid density portrait/landscape auto=0 — `domain/.../library/model/LibraryDisplayMode.kt` — `pref_display_mode_library`
+- Category tabs — system All + user categories pager; item counts toggle; restores last tab — `ui/library/LibraryTab.kt`, `LibraryTabs.kt` — `display_category_tabs=true`, `display_number_of_items=false`
+- Per-category display settings — filter/sort/display per category w/ global fallback — `SetSortModeForCategory.kt`, `SetDisplayMode.kt` — `categorized_display=false`
+- Sort modes — Alphabetical, LastRead, LastUpdate, UnreadCount, TotalChapters, LatestChapter, ChapterFetchDate, DateAdded, TrackerMean, Random(seeded) ± Asc/Desc; stored in Category.flags — `LibrarySortMode.kt`, applySort in `LibraryViewModel.kt` — `library_sorting_mode=Alphabetical/Asc`; NOTE: no manual drag-order sort upstream
+- Filter sheet — tri-state chips Downloaded/Unread/Started/Bookmarked/Completed/IntervalCustom + per-tracker — `LibrarySettingsDialog.kt` — keys `pref_filter_library_*_v2` all DISABLED
+- Cover badges — download(false)/unread(true)/local(true)/language(false) counts — `LibraryViewModel.getFavoritesFlow` — `display_{download,unread,local,language}_badge`
+- Query DSL search — toolbar text → AST: fields title/author/artist/description/genre/source/notes/language/source_id; comparisons unread/read/total/id/added/fetchinterval/nextupdate with >,<,>=,<=,=; AND/OR/NOT — `mihon/domain/library/model/search/*`, matcher `QueryNodeExtensions.kt`
+- Selection mode — tap select, long-press RANGE select, all/invert — `LibraryViewModel.toggleRangeSelection`
+- Bulk actions — download presets(1/5/10/25/unread/bookmarked), mark read/unread, change categories tri-state preselect — same VM
+- Toolbar — refresh active category vs global update; open RANDOM entry in category — `LibraryTab.kt`
+- Continue-reading overlay button on covers (both apps) — `display_continue_reading_button=false`
+- Category CRUD + drag reorder — `ui/category/CategoryScreen.kt`, `ReorderCategory.kt`
 
-Both apps use the **same component and the same trick**:
+## 2. Global search & browsing
 
-- **Composable**: `PullRefresh` — thin wrapper over Material3 `pullToRefresh`
-  (`presentation-core/src/main/java/tachiyomi/presentation/core/components/material/PullRefresh.kt`)
-  - `rememberPullToRefreshState()` + `Modifier.pullToRefresh(isRefreshing, state, enabled, onRefresh)` in a `Box`, `PullToRefreshDefaults.Indicator` overlaid top-center.
-  - Params: `refreshing: Boolean`, `enabled: Boolean`, `onRefresh: () -> Unit`, `indicatorPadding: PaddingValues`, `content`.
-- **Fake spinner**: the indicator never tracks the real job. The refresh runs in a
-  WorkManager worker, so the UI shows `isRefreshing = true; delay(1.seconds); isRefreshing = false`
-  — a cosmetic 1-second spinner:
-  - Mihon: `app/src/main/java/eu/kanade/presentation/library/components/LibraryContent.kt:85-90`
-  - Komikku: same file, lines 96-101
-  - `isRefreshing` is per-page state: `remember(pagerState.currentPage)`.
-- **Disabled during multi-select**: `enabled = selection.isEmpty()`.
-- **No on/off setting for the gesture** — always enabled otherwise.
+- Unified search — parallel query of enabled sources (5-thread pool), grouped per source pinned-first, progress n/total, error cards — `globalsearch/SearchViewModel.kt`, `GlobalSearchViewModel.kt`
+- Scope filters — All vs PinnedOnly; per-extension filter; hide-empty-results toggle
+- Source browse — Popular/Latest/Search tabs, dynamic FilterList dialog, genre chips — `BrowseSourceViewModel.kt`, `SourceFilterDialog.kt`
+- In-app WebView of source site — `BrowseSourceScreen.kt`
+- Duplicate check on add — normalized-title match → confirm dialog — `GetDuplicateLibraryManga.kt`
+- Migration shortcut from long-press result — `SearchViewModel.Dialog.Migrate`
+- Upcoming feed — expected next-release dates grouped calendar-style — `mihon/feature/upcoming/UpcomingScreen.kt`
 
-### 1.2 Callback chain
+## 3. Sources & extensions
 
-1. Gesture completes → `PullRefresh.onRefresh` → `onRefresh()` (returns `Boolean`: did the job start?).
-2. `LibraryTab` supplies: `onRefresh = { onClickRefresh(state.activeCategory) }` — **updates only the ACTIVE category/tab**.
-   - Mihon: `app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt:208` (handler `:95-106`)
-   - Komikku: `:335` (handler `:121-144`)
-3. `onClickRefresh` → `LibraryUpdateJob.startNow(context, category)` then snackbar
-   (`update_already_running` / `updating_category` / `updating_library`).
-   - The toolbar refresh icon uses the same handler; a global-update icon calls it with `null` (full library).
-4. **`LibraryUpdateJob.startNow`** — WorkManager `OneTimeWorkRequestBuilder`, unique work
-   `"LibraryUpdate-manual"`, tag `LibraryUpdate`, `ExistingWorkPolicy.KEEP`; returns `false` if already running.
-   - Komikku passes extra group params (`group`, `groupExtra`) from the SY fork so the scope
-     respects the active grouped tab (by source / track status / read status):
-     `startNow(context, category, group=state.groupType, groupExtra=...)` (LibraryTab.kt:121-144);
-     queue filtering at `LibraryUpdateJob.kt:224-379`.
-   - Komikku also chains a sync job when sync is enabled (`SyncDataJob` → update, `:832-854`).
-5. **Worker `doWork`** — `LibraryUpdateJob.kt`:
-   - Mihon `:94-133`: sets last-updated timestamp, reads category (default -1 = whole library),
-     runs `updateChapterList()` as a foreground service (progress notification, `FOREGROUND_SERVICE_TYPE_DATA_SYNC`).
-   - Queue assembly `addMangaToQueue` (Mihon `:153-225`, Komikku `:224-379`):
-     - category given → filter library by membership; else include/exclude by
-       `libraryPreferences.updateCategories` / `updateCategoriesExclude` (empty = all).
-     - **Skips** (via `autoUpdateMangaRestrictions` + update strategy): `ONLY_FETCH_ONCE` manga that
-       already have chapters; completed manga; fully-read manga; never-started manga; outside release
-       period vs fetch window. Defaults (Komikku): skips fully-read, non-completed, started, in-release-period.
-   - Update loop `updateChapterList` (Mihon `:235-318`, Komikku `:389-502`): groups by source,
-     `Semaphore(5)` → max 5 sources concurrently; per manga: re-check still favorite →
-     `updateManga(manga, fetchWindow)` → `UpdateMangaFromRemote` interactor with
-     `fetchDetails = autoUpdateMetadata` (default false), `fetchChapters = true`.
-     - New chapters → filter for download → auto-download, bump `newUpdatesCount` badge,
-       "new updates" notification; failures written to an error file/DB + error notification.
-   - **No tracker sync** in Mihon's library update (trackers only on manga screen).
+- Extension stores/repos — add/remove/refresh URLs, deeplink install — `ExtensionStores{Screen,ViewModel}.kt` — `extension_repos`
+- Lifecycle — PackageInstaller/Shizuku install, in-process APK load, update-all badge — `ExtensionLoader.kt`, `ExtensionManager.kt`
+- Trust system — untrusted signature → prompt; trust=pkgName+versionCode+SHA256 — `TrustExtension` — appState `trusted_extensions`
+- NSFW gate — ext metadata flag; hide behind switch — `show_nsfw_source=true`
+- Languages/pin/hide — `source_languages`, `hidden_catalogues`, `pinned_catalogues`
+- Incognito per-extension — `incognito_extensions`
+- Migration flow — entry points from sources/manga/search; multi-target config w/ drag priority, optional deep search, candidate scoring by chapter count, hide unmatched/no-updates; flags bitmask (CHAPTER/CATEGORY/CUSTOM_COVER/NOTES/REMOVE_DOWNLOAD all on) — `mihon/feature/migration/*`, `MigrateMangaUseCase.kt` — `migration_flags`, `migration_deep_search=false`
 
-### 1.3 Settings governing the update (not the gesture)
+## 4. Updates
 
-Settings → Library → "Library update" group:
-`app/src/main/java/eu/kanade/presentation/more/settings/screen/SettingsLibraryScreen.kt:112-238`
-prefs in `domain/src/main/java/tachiyomi/domain/library/service/LibraryPreferences.kt`:
+- Periodic job — WorkManager periodic (Off/12/24/48/72h/weekly), foreground progress notification — `data/library/LibraryUpdateJob.kt` — `pref_library_update_interval_key=0`
+- Device restrictions — wifi/unmetered/charging; battery-not-low always — `library_update_restriction={wifi}`
+- Smart skips — completed, fully-read, not-started, outside release window, fetch-once strategy — `library_update_manga_restriction={ongoing,fully_read,started,outside_release_period}`
+- Adaptive fetch interval — learns per-manga cadence from upload history; drives release window + Upcoming screen — `FetchInterval.kt`
+- Category include/exclude tri-state — `library_update_categories/_exclude`
+- Metadata refresh during update — `auto_update_metadata=false`, title refresh false
+- Notifications — grouped per-manga new-chapter notifs + summary; failure notif w/ shareable error log; queue-size warning — `LibraryUpdateNotifier.kt`
+- Unseen badge — counter incremented on new chapters, reset opening Updates tab — `library_unseen_updates_count`
+- Updates screen — date headers (last 3 months), range selection, live download status per row, actions (download/start-now/cancel/delete/mark read/bookmark), filter sheet tri-state + categories — `UpdatesViewModel.kt`, `UpdatesFilterDialog.kt`
 
-| Setting | Key | Default | Notes |
-|---|---|---|---|
-| Automatic updates interval | `pref_library_update_interval_key` | Off | schedules the periodic job; not the gesture |
-| Device restrictions (WiFi/unmetered/charging) | `autoUpdateDeviceRestrictions` | WiFi | **auto runs only**; manual gesture ignores |
-| Categories include/exclude | `library_update_categories` / `_exclude` | empty (all) | scope of full-library updates |
-| Refresh metadata (fetch details) | `auto_update_metadata` | false | whether update also refreshes manga details |
-| Smart update multiselect | `autoUpdateMangaRestrictions` | (see above) | skip completed/fully-read/not-started/out-of-period |
-| Dynamic-category update mode (Komikku/SY) | `group_library_update_type` | GLOBAL | `GLOBAL / ALL_BUT_UNGROUPED / ALL` |
-| Unread count badge | `library_show_updates_count` | true | new-update tab badge |
+## 5. Downloads
 
-The same `PullRefresh` pattern is used on the Updates, Manga, Extensions and Feed screens
-(with real state on the Manga screen: `viewModel.fetchAllFromSource`).
+- Queue screen — source-grouped, per-item page progress, FAB pause/resume, cancel-all — `DownloadQueue{Screen,ViewModel}.kt`
+- Reorder — drag-drop; move top/bottom item-or-series; sort by upload/chapter — `reorderQueue`
+- Queue survives process death — `DownloadStore.kt`
+- Concurrency — parallel sources 1-10 (=5), pages per download 1-15 (=5) — `download_parallel_{source,page}_limit`
+- Network gate — wifi-only — `download_only_over_wifi=true`
+- Formats — CBZ archives(true)/folders, split tall images — `DownloadPreferences.kt`
+- Auto-download — while reading ahead (0/2/3/5/10 unread); on library update (`download_new=false`) + unread-only + category sets — `FilterChaptersForDownload`
+- Auto-delete — after marked read(false), after Nth-to-last slot(-1), keep bookmarked(false)+excluded categories
+- Offline — `DownloadCache.kt`, global downloaded-only mode `pref_downloaded_only=false`, pending deleter batching
 
----
+## 6. Reader
 
-## 2. Backup Creation — Customizable
+Core prefs: `ReaderPreferences.kt`.
+- Modes — LTR/RTL/Vertical pagers, Webtoon continuous, Vertical+ snapping; per-manga override — `ReadingMode.kt` — default RTL(2)
+- WebGPU high-quality renderer gate — `pref_high_quality_renderer_key=false`
+- Orientation lock free/portrait/landscape/reverse — `ReaderOrientation.kt`
+- Tap zones — 5 layouts + invert + visual overlay tutorial — `viewer/navigation/*` — `reader_navigation_mode_*=0`
+- Volume-key paging ±invert — `reader_volume_keys=false`
+- Scale types — Fit/Stretch/FitW/FitH/Original/SmartFit — `pref_image_scale_type_key=1`; zoom start position
+- Crop borders paged/webtoon quick-toggle — false/false; landscape zoom, navigate-on-pan true
+- Dual-page — split(_webtoon)/rotate/force NEVER, invert variants — all false
+- Overlays — custom brightness −75..100 scrim; RGB color filter + blend modes; grayscale; inverted colors — `ReaderContentOverlay.kt`
+- Theme Black/Gray/White/Automatic — `pref_reader_theme_key=1`; flash-on-page-change(duration/interval/color)
+- Fullscreen/cutout/keep-screen-on — true/true/false
+- Chrome — top bar (title/bookmark/webview/share), bottom bar (mode/orientation/crop quick-switch), slider navigator horizontal-or-vertical-edge — `ChapterNavigator.kt`
+- Chapter transitions — prev/next interstitials w/ preview + download-next prompt + gap warning — `ChapterTransition.kt` — `always_show_chapter_transition=true`
+- Skip options at transitions — read(false)/filtered(true)/dupe(false) — ReaderViewModel chapterList builder
+- On finish — mark read + duplicate-numbered cleanup, auto-download ahead, delete-after-N-slots — `updateChapterProgressOnComplete:590`, `downloadNextChapters:496`
+- History timer per session (skipped incognito) — `restartReadTimer/updateHistory:614`
+- Track push on finish — `updateTrackChapterRead:940` — `pref_auto_update_manga_sync_key=true`
+- Per-page actions — save/share/copy/set-as-cover — `ReaderPageActionsDialog.kt`
 
-### 2.1 UI flow (identical in both apps)
+## 7. History
 
-- Entry: Settings → Data and storage → "Backup and restore" → segmented button **"Create backup"**
-  (`SettingsDataScreen.kt` Mihon `:224-228` / Komikku `:261-302`) → navigates to **CreateBackupScreen**
-  (a full screen, not a dialog):
-  `app/src/main/java/eu/kanade/presentation/more/settings/screen/data/CreateBackupScreen.kt`
-- Body: two `SectionCard`s — **"Library"** (`libraryOptions`) and **"Settings"** (`settingsOptions`);
-  each entry is a `LabeledCheckbox(label, checked, onCheckedChange, enabled)`.
-- Bottom action **"Create"**, enabled only when `state.options.canCreate()`.
-- On click: guard `BackupCreateJob.isManualJobRunning` → SAF `CreateDocument("application/*")`
-  with suggested name `BackupCreator.getFilename()` → take persistable URI permission →
-  `viewModel.createBackup(context, uri)` → `BackupCreateJob.startNow(context, uri, options)` → pop screen.
-- Screen state: `StateViewModel<State>` holding `options: BackupOptions`.
+- FastScroll list, relative-date headers (Today/Yesterday/date) — `HistoryScreen.kt`
+- Resume point — next unread else last-read continuation — `GetNextChapters.kt`; global most-recent shortcut in tab
+- Search by title (SQL LIKE); reset-all sweep w/ confirm; remove single/whole-manga; add-to-library from history w/ duplicate check — `HistoryViewModel.kt`
+- Row model stores last_read + time_read accumulated ms — `history.sq`
 
-### 2.2 BackupOptions — full option list
+## 8. Statistics
 
-**Mihon (10 fields)** — `app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupOptions.kt`:
+- Text StatItem cards, NO charts — Overview(library size, completed, total read time SUM(history.time_read)) / Titles(update-eligible, started, local) / Chapters(total/read/downloaded) / Trackers(tracked count, mean score normalized 10pt) — `StatsViewModel.kt`, `GetTotalReadDuration.kt`
 
-| # | Field | Default | Exact UI label | Enabled when |
+## 9. Tracking
+
+- 11 trackers MAL/AniList/Kitsu/Shikimori/Bangumi/Komga/MangaUpdates/Kavita/Suwayomi/Hikka/MangaBaka — `TrackerManager.kt`, contract `Tracker.kt`
+- OAuth browser redirect login; Kitsu/MU user-pass; self-hosted URL+creds — `BaseOAuthLoginActivity.kt`
+- Enhanced trackers auto-match silently on add-to-library — `EnhancedTracker.kt`, `AddTracks.bindEnhancedTrackers`
+- Push per finished chapter w/ delayed retry WorkManager job — `TrackChapter.kt`, `DelayedTrackingUpdateJob.kt`
+- On mark-as-read ALWAYS/ASK(snackbar)/NEVER — `pref_auto_update_manga_on_mark_read=ALWAYS`
+- Search binding dialog + status/score/dates editor — `TrackInfoDialog*.kt`
+- Score formats per tracker (POINT_100/10/5, STEP_N) — `TrackPreferences.kt`
+- Refresh reconciles two-way (local chapters ≤ remote read) — `RefreshTracks.kt`
+
+## 10. Manga detail screen
+
+- Info header — cover dialog(pinch zoom/share/save/edit/delete custom), expandable markdown description, genre chips tap=search long-press=copy — `MangaInfoHeader.kt`, `MarkdownRender.kt`, `MangaCoverDialog.kt`
+- Action row — favorite(+category picker+duplicate warn), webview, tracking chip, edit categories, edit predicted next-update, countdown — `MangaActionRow:174`
+- Resume FAB Start/Resume → next unread — `MangaScreen.kt:327`
+- Chapters — filters TriState unread/downloaded/bookmarked + scanlator multi-select; sort Source/Number/Upload/Alpha ±asc; display name-or-number; "set as default"; missing-chapters gap row; multi-select batch menu; inline download state machine icons — `ChapterSettingsDialog.kt`, `MangaBottomActionMenu.kt`, `ChapterDownloadIndicator.kt`
+- Notes tab/editor per manga — `MangaNotesScreen.kt`, `UpdateMangaNotes.kt`
+
+## 11. Backup & restore
+
+- CreateBackupScreen — full screen, SectionCards Library/Settings, LabeledCheckbox entries, Create via SAF CreateDocument(`application/*`) suggested name — `CreateBackupScreen.kt`
+- BackupOptions — Mihon 10 fields / KMK 12 (append slots 10-11): libraryEntries, categories, chapters, tracking, history, readEntries, appSettings, extensionStores, sourceSettings, privateSettings(FALSE=sensitive/tokens stripped), +customInfo, +savedSearchesFeeds; `canCreate()` OR-guard; serialization positional BooleanArray APPEND-ONLY — `BackupOptions.kt`
+- BackupCreateJob — CoroutineWorker foreground progress notif; manual unique `"BackupCreator:manual"` KEEP; success/failure notifs; auto uses DEFAULT options — `BackupCreateJob.kt`
+- BackupCreator — MAX_AUTO_BACKUPS=4 deletes older FILENAME_REGEX in autobackup dir; assembly Backup(...); write kotlinx ProtoBuf → okio gzip `.tachibk`; post-validate via BackupFileValidator(delete on exception) — `BackupCreator.kt`
+- Format — single gzipped protobuf `{appId}_yyyy-MM-dd_HH-mm.tachibk`; gzip magic sniff; legacy JSON rejected; NO encryption (privateSettings only scopes content); proto numbers 1 manga,2 categories,101 sources,104 prefs,105 sourcePrefs,106 extStores,600 savedSearches(KMK),610 feeds(KMK); BackupManga carries category ORDER INDICES not ids; BackupPreference sealed typed {key,value} — `models/Backup*.kt`
+- Restore — RestoreOptions mirror (5: libraryEntries/categories/appSettings/extensionStores/sourceSettings) + RestoreBackupScreen; restore job foreground notif + error log; restorers mirror creators 1:1 — `RestoreOptions.kt`, `RestoreBackupScreen.kt`, `restore/restorers/*`
+- Preferences dump — createApp all PreferenceStore minus `__APP_STATE_`; createSource per-source keyed; private strips `__PRIVATE_` — `PreferenceBackupCreator.kt`
+- Auto-backup — periodic setupTask requiresBatteryNotLow exponential backoff, interval Off/6/12/24/48/168 default **12h** — `BackupPreferences.backup_interval=12`
+
+## 12. Sync & connections (Komikku only)
+
+- 3 backends WebDav / Google Drive / SyncYomi — `data/sync/service/*.kt`, absent in Mihon
+- Prefs — host/apikey/interval/service + triggers (on chapter read/open/app start/resume, all false) + per-domain payload toggles (all true incl. privateSettings/customInfo/savedSearchesFeeds) — `SyncPreferences.kt`
+- UI — SettingsConnectionScreen + SyncSettingsSelector + trigger options screens
+- Discord Rich Presence — RPC status/incognito/buttons/timestamps — `ConnectionsPreferences.kt` — `pref_enable_discord_rpc=false`
+
+## 13. Settings app & security
+
+- Sections — Appearance / Library / Reader / Downloads / Tracking / Browse / Data&storage / Security&privacy / Advanced (+about/debug dirs) — `presentation/more/settings/screen/Settings*Screen.kt`
+- Appearance — theme system light/dark/auto-dark, palettes, AMOLED black, custom theme color picker (KMK `AppCustomThemeColorPickerScreen.kt`), date relative format, app language
+- Security — biometric app lock (`use_biometric_lock=false`), secure-screen block screenshots ALWAYS/INCOGNITO(`secure_screen_v2=INCOGNITO`); KMK per-category biometric times — `BiometricTimesScreen.kt`
+- Data&storage — storage locations, cache locations per-type clear, disk stats — `StorageLocationScreen.kt`
+- Advanced — clear cookies/cache/webview data, crash logs ACRA-style debug info, analytics opt-in toggle (`privacyPreferences.analytics` referenced in App.kt:161)
+
+## 14. Platform misc
+
+- Notification channels (~10): common, library progress/errors, downloader progress/errors, new chapters, backup/restore progress/complete, incognito mode, extensions update — `data/notification/Notifications.kt`
+- Launcher shortcuts xml + DeepLinkActivity (search/add URLs) — `AndroidManifest.xml`, `ui/deeplink/DeepLinkActivity.kt`
+- Onboarding first-run flow — `presentation/more/onboarding/*` — `onboarding_complete`
+- New-update changelog screen (GitHub release fetch) — `NewUpdateScreen.kt`, `GetApplicationRelease`
+- Whats-new / Coming-updates screens (KMK) — `WhatsNewScreen.kt`, `ComingUpdatesScreen.kt`
+- Library-update errors dedicated screen (KMK) — `LibraryUpdateErrorScreen.kt`
+
+## 15. Komikku deltas index
+
+Data Saver(recompression NONE/BANDWIDTH_HERO/WSRV_NL + excluded sources) · Saved Searches & Feeds(+screens+backup 600/610) · Server sync trio · Update group types GLOBAL/ALL_BUT_UNGROUPED/ALL · library grouping by tag + sort tags CRUD · merged/multi-source manga(SmartSearchMerge,MergedSource) · Related mangas row · Page previews · EHentai enhanced-source stack(source-api exh/**, SettingsEhScreen) · reader extras(page_layout,invert_double_pages,smooth_auto_scroll,bottom_buttons,seekbar variants,EH caching keys) · library update errors screen · Discord RPC · custom theme picker · misc prefs(fetch_metadata_on_add,hide_hidden_categories,sources_tab_categories)
+
+## 16. GameVault adaptation map
+
+### 16.1 Already implemented (do NOT redo)
+- Pull-to-refresh concept → auto-update checks worker (b0d7967): interval Off/6/12/24/48/168 default 12h, fetch-window skip, lastChecked column (DB v8)
+- Customizable backup (575bb46): group gates wantLibrary/wantCollections/wantHistory/wantTags/wantAppSettings, JSON Gson, SAF export
+- Auto-backup rotation (a05717d): periodic worker, tmp+rename atomicity, keep-newest-N, reactive schedule/cancel
+- Route-linked play sessions + real History + backup routeIndex round-trip (dc2baa4)
+
+### 16.2 Coherent candidates (adaptation queue)
+| Priority | Feature | Source § | Adaptation | Size |
 |---|---|---|---|---|
-| 0 | `libraryEntries` | true | Library entries | always |
-| 1 | `categories` | true | Categories | always |
-| 2 | `chapters` | true | Chapters | `libraryEntries` |
-| 3 | `tracking` | true | Tracking | `libraryEntries` |
-| 4 | `history` | true | History | `libraryEntries` |
-| 5 | `readEntries` | true | All read entries | `libraryEntries` |
-| 6 | `appSettings` | true | App settings | always |
-| 7 | `extensionStores` | true | Extension stores | always |
-| 8 | `sourceSettings` | true | Source settings | always |
-| 9 | `privateSettings` | **false** | Include sensitive settings (e.g., tracker login tokens) | `appSettings \|\| sourceSettings` |
+| 1 | Unseen-updates badge + Recently Updated sort | §4 | count games w/ detected newer version unseen; sort axis on lastChecked/version-detected | S-M |
+| 2 | RestoreOptions UI parity | §11 | selective-import checkboxes exposing existing group gates | S-M |
+| 3 | Open random entry | §1 | toolbar action random in-library game | S |
+| 4 | Per-entry update mute | §4/§10 | boolean column per game silencing worker notifications | M(migration v9) |
+| 5 | Statistics screen | §8 | cards: total playtime, library size, routes completed, sessions week, top-by-playtime | M |
+| 6 | Duplicate detection on add | §2 | f95_url already-in-library confirm dialog | S |
+| 7 | Bulk selection actions | §1 | multi-select → add to collection/tag | M |
+| 8 | Adaptive fetch interval | §4 | learn per-game release cadence → prioritize checks | L |
+| 9 | Biometric app lock | §13 | SecurityScreen addition, F95-content privacy | S-M |
+| 10 | Upcoming/expected updates feed | §2 | depends on #8 | M |
 
-`canCreate()` = `libraryEntries || categories || appSettings || extensionStores || sourceSettings`.
-
-**Komikku (12 fields)** — adds two, append-compatible slots:
-`app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupOptions.kt:9-147`
-
-| # | Field | Default | Exact UI label | Enabled when |
-|---|---|---|---|---|
-| 10 | `customInfo` (SY) | true | Custom entry info | `libraryEntries` |
-| 11 | `savedSearchesFeeds` (SY+KMK) | true | Saved Searches & Feeds | always |
-
-Komikku `canCreate()` adds `savedSearchesFeeds` to the OR.
-
-Section split: "Library" = 0-5 + 10; "Settings" = 6-9; Komikku shows 11 under Library.
-
-**Serialization**: options travel through WorkManager input as a positional **`BooleanArray`**
-(`asBooleanArray()` / `fromBooleanArray()`). **Append-only by design** — Komikku extended Mihon's
-array by adding slots 10-11 without breaking compatibility.
-
-### 2.3 Job and file writing
-
-- `BackupCreateJob` (CoroutineWorker):
-  - `doWork`: manual vs auto (auto uses default `BackupOptions()` — no customization for auto);
-    target uri from input or automatic backups dir; foreground progress notification
-    (`ID_BACKUP_PROGRESS`, `DATA_SYNC`); success → "backup complete" notification with file;
-    failure → error notification + `Result.failure()`.
-  - `startNow`: unique work `"BackupCreator:manual"`, `ExistingWorkPolicy.KEEP` (no-op if queued).
-  - `setupTask`: periodic auto-backup, `requiresBatteryNotLow`, exponential backoff,
-    interval from backup prefs (default **12 h**; options Off/6/12/24/48/168).
-- `BackupCreator.backup(uri, options)`:
-  - Manual: `UniFile.fromUri` of the SAF-created file.
-  - Auto: keeps `MAX_AUTO_BACKUPS = 4`, deletes older `FILENAME_REGEX` matches, writes into `autobackup/`.
-  - Assembly: `Backup(backupManga, backupCategories, backupSources, backupPreferences, backupSourcePreferences, backupExtensionStores [, backupSavedSearches, backupFeeds])`.
-  - Write: `parser.encodeToByteArray(Backup.serializer(), backup)` (kotlinx-serialization **ProtoBuf**)
-    → `file.openOutputStream().sink().gzip().buffer().write(...)` (**okio gzip**), truncating first.
-  - Post-write validation via `BackupFileValidator` (decodes and reports missing sources /
-    not-logged-in trackers); on exception deletes the file.
-
-### 2.4 File format
-
-- Extension **`.tachibk`**, filename `"{applicationId}_yyyy-MM-dd_HH-mm.tachibk"`.
-- **Single gzip-compressed protobuf** — NOT a zip, NO JSON inside. Decoder sniffs gzip magic
-  `0x1f8b`; legacy JSON signatures (`{}`/`{"`/`{\n`) are explicitly rejected.
-- **No encryption / no password option** (the `privateSettings` checkbox only controls which
-  prefs are included, not encryption). UI warns backups "may contain sensitive data".
-- Proto field numbers: `1 backupManga`, `2 backupCategories`, `101 backupSources` (100 reserved
-  for legacy broken sources), `104 backupPreferences`, `105 backupSourcePreferences`,
-  `106 backupExtensionStores`; Komikku adds `600 backupSavedSearches` (SY) and
-  `610 backupFeeds` (KMK) — **high numbers for fork-specific payloads = forward/backward compat pattern**.
-- `BackupManga` carries: source/url/title/artist/author/description/genre/status/thumbnail/
-  dateAdded/viewerFlags/chapterFlags, `chapters`, `categories` (**category order indices**, not ids),
-  `tracking`, `history` (url + readAt + readDuration), updateStrategy, excludedScanlators, notes,
-  initialized, memo (byte array).
-- `BackupPreference` = `{1 key, 2 value}` with sealed variants Int/Long/Float/String/Boolean/StringSet;
-  `BackupSourcePreferences` = `{1 sourceKey, 2 prefs}`.
-
-### 2.5 Option → creator mapping
-
-| Option | Creator | What it dumps |
-|---|---|---|
-| `libraryEntries` | `MangaBackupCreator` | per-manga BackupManga; chapters/categories/tracking/history only if their own options on; `readEntries` adds read-but-not-in-library entries (`getReadMangaNotInLibrary()`) |
-| `categories` | `CategoriesBackupCreator` | all non-system categories (+ per-manga category order indices inside MangaBackupCreator) |
-| `chapters` | inside MangaBackupCreator | all chapters |
-| `tracking` | inside MangaBackupCreator | per-tracker sync rows |
-| `history` | inside MangaBackupCreator | url/readAt/readDuration |
-| (implicit) | `SourcesBackupCreator` | distinct source id+name of backed-up manga (always) |
-| `appSettings` | `PreferenceBackupCreator.createApp` | all PreferenceStore values except `__APP_STATE_` keys; typed Int/Long/Float/String/Boolean/Set<String> |
-| `sourceSettings` | `PreferenceBackupCreator.createSource` | per-ConfigurableSource prefs keyed by preferenceKey; empty ones filtered |
-| `privateSettings` | filter inside both pref creators | strips `__PRIVATE_` keys (tracker tokens) when false |
-| `extensionStores` | `ExtensionStoresBackupCreator` | all extension stores/repos |
-| `customInfo` (Komikku) | inside MangaBackupCreator | SY custom entry info |
-| `savedSearchesFeeds` (Komikku) | `SavedSearchBackupCreator` + `FeedBackupCreator` | all saved searches; all feed/saved-search entries |
-
-Restore mirrors create 1:1 with `RestoreOptions` + `restore/restorers/*`.
-
----
-
-## 3. Current GameVault State (what maps where)
-
-| Feature | Mihon/Komikku | GameVault today |
-|---|---|---|
-| Pull-to-refresh in library | `PullRefresh` wrapper + fake 1s spinner + WorkManager fire-and-forget | **Not implemented** — no library update gesture |
-| Update scope | active category or whole library; smart-update skips | N/A — GameVault library = saved games; update would re-scrape saved games' details/changelog (F95 `scrapeGame` per game) |
-| Backup creation screen | full screen, 2 sections, checkboxes + Create via SAF | `GameVaultBackup.kt` — single JSON (Gson) with fixed fields; **no options UI** |
-| Backup format | gzipped protobuf `.tachibk` | plain JSON; note: restore-tolerant for missing fields via Gson |
-| GameVault per-game fields worth backing up | — | title, developer, publisher, engine, version, status, ratings, dates, notes, source_type, source_url, f95_url, changelog, devLinks, downloadLinks, tags, collections, routes, play sessions |
-
----
-
-## 4. Recommended GameVault Implementation Path
-
-### 4.1 Pull-to-refresh ("update library")
-1. Adopt Material3 `pullToRefresh` via a small `PullRefresh` wrapper (copy the pattern).
-2. On refresh: dispatch a fire-and-forget job (coroutine in a repository, no WorkManager needed at
-   this scale) that re-scrapes saved games (`F95ZoneScraper.scrapeGame(url, cookie)` per game,
-   limited concurrency ~3-5, refresh details + changelog + devLinks/downloadLinks + status).
-3. Fake 1 s spinner while the job runs; badge/snackbar "Updating X games" on completion;
-   skip logic: only games whose last check is older than the fetch window.
-4. Settings: fetch-window interval + "refresh metadata" toggle are the highest-value knobs.
-
-### 4.2 Customizable backup (Mihon-style)
-1. Screen (or dialog) with two sections: **"Library"** (Library entries, Chapters/Changelog,
-   History, Categories, Play sessions, Notes) and **"Settings"** (App settings, Source settings,
-   Include sensitive settings — PREFER false).
-2. `BackupOptions` data class serialized as positional `BooleanArray` (append-only).
-3. Writer: single JSON is fine today (Gson already handles missing fields); if forward-compat is
-   needed later, switch to gzipped protobuf with high field numbers.
-4. SAF `CreateDocument` with generated filename `gamevault_yyyy-MM-dd_HH-mm.json`.
-5. Restore screen mirrors options (`RestoreOptions`) — only restore what was backed up.
-
----
-
-## 5. Key Source Paths (for re-checking)
-
-- PullRefresh wrapper: `presentation-core/src/main/java/tachiyomi/presentation/core/components/material/PullRefresh.kt` (both repos)
-- LibraryContent: `app/src/main/java/eu/kanade/presentation/library/components/LibraryContent.kt` (both)
-- LibraryTab wiring: `app/src/main/java/eu/kanade/tachiyomi/ui/library/LibraryTab.kt` (Mihon :95-106,208; Komikku :121-144,335)
-- LibraryUpdateJob: `app/src/main/java/eu/kanade/tachiyomi/data/library/LibraryUpdateJob.kt`
-- Backup options: `app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupOptions.kt`
-- Create screen: `app/src/main/java/eu/kanade/presentation/more/settings/screen/data/CreateBackupScreen.kt`
-- BackupCreator: `app/src/main/java/eu/kanade/tachiyomi/data/backup/create/BackupCreator.kt`
-- Creators: `app/src/main/java/eu/kanade/tachiyomi/data/backup/create/creators/*.kt`
-- Proto models: `app/src/main/java/eu/kanade/tachiyomi/data/backup/models/Backup.kt` (+ BackupManga.kt, BackupPreference.kt)
-- Decoder: `app/src/main/java/eu/kanade/tachiyomi/data/backup/BackupDecoder.kt`
-- Backup prefs: `domain/src/main/java/tachiyomi/domain/backup/service/BackupPreferences.kt`
+### 16.3 Discarded (no coherent mapping)
+Reader internals, downloads/chapters machinery, extensions/repos, trackers OAuth suite, cross-source migration, Data Saver, merged manga, feeds/saved-searches, Discord RPC, page previews.

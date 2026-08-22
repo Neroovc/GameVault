@@ -74,6 +74,12 @@ class GameDetailViewModel(
         initialValue = GameDetailUiState(isLoading = true),
     )
 
+    init {
+        viewModelScope.launch {
+            repository.clearUpdateAvailable(gameId)
+        }
+    }
+
     fun updateGameStatus(status: GameStatus) {
         viewModelScope.launch {
             val current = uiState.value.game ?: return@launch
