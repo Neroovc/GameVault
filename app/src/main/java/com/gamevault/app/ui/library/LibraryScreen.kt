@@ -2,7 +2,7 @@ package com.gamevault.app.ui.library
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -589,7 +589,7 @@ private fun UpdateAvailableBadge(count: Int) {
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
     ) {
         Text(
-            text = stringResource(R.string.updates_available_badge, count),
+            text = pluralStringResource(R.plurals.updates_available_badge, count, count),
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
         )
